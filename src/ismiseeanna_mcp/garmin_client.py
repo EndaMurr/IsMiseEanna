@@ -14,27 +14,28 @@ class GarminClientError(RuntimeError):
 
 
 def get_client() -> Garmin:
-    """Return a logged-in Garmin client, resuming a cached session when possible."""
+    """Return a logged-in Garmin client, resuming a cached session when possible.
+
+    ``Garmin.login(tokenstore)`` handles both paths itself: it resumes from a
+    cached token at ``tokenstore`` if one exists, and otherwise logs in with
+    the constructor's email/password and saves the resulting token there.
+    """
     global _client
     if _client is not None:
         return _client
 
+    client = Garmin(
+        email=os.environ.get("GARMIN_EMAIL"),
+        password=os.environ.get("GARMIN_PASSWORD"),
+    )
     try:
-        client = Garmin()
         client.login(TOKEN_STORE)
-    except (FileNotFoundError, GarminConnectAuthenticationError):
-        email = os.environ.get("GARMIN_EMAIL")
-        password = os.environ.get("GARMIN_PASSWORD")
-        if not email or not password:
-            raise GarminClientError(
-                "No cached Garmin session found at "
-                f"{TOKEN_STORE}, and GARMIN_EMAIL/GARMIN_PASSWORD are not set. "
-                "Set both env vars for the first login; the session is then "
-                "cached so future calls don't need the password."
-            )
-        client = Garmin(email=email, password=password)
-        client.login()
-        client.garth.dump(TOKEN_STORE)
+    except GarminConnectAuthenticationError as e:
+        raise GarminClientError(
+            f"Garmin login failed ({e}). If this is the first run, set "
+            "GARMIN_EMAIL and GARMIN_PASSWORD; the session is then cached at "
+            f"{TOKEN_STORE} so future calls don't need the password."
+        ) from e
 
     _client = client
     return _client
