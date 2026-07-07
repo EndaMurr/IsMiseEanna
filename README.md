@@ -34,6 +34,10 @@ need the password.
 - `search_activities_by_date(start_date, end_date, activity_type)` — activities in a date range (`YYYY-MM-DD`)
 - `get_activity_details(activity_id)` — full metrics for one activity
 - `get_activity_splits(activity_id)` — lap/split data for one activity
+- `get_activity_weather(activity_id)` — recorded weather conditions for one activity
+- `get_activity_gear(activity_id)` — gear (shoes, bike, etc.) logged against one activity
+- `get_activity_hr_zones(activity_id)` — time spent in each heart rate zone for one activity
+- `get_personal_records()` — current personal records (fastest 5K, longest run, etc.)
 
 ## Using with Claude Desktop / Claude Code
 

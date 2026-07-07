@@ -48,6 +48,30 @@ def get_activity_splits(activity_id: int) -> dict:
     return get_client().get_activity_splits(activity_id)
 
 
+@mcp.tool()
+def get_activity_weather(activity_id: int) -> dict:
+    """Get recorded weather conditions for one activity by its Garmin activity ID."""
+    return get_client().get_activity_weather(activity_id)
+
+
+@mcp.tool()
+def get_activity_gear(activity_id: int) -> dict:
+    """Get the gear (shoes, bike, etc.) logged against one activity by its Garmin activity ID."""
+    return get_client().get_activity_gear(activity_id)
+
+
+@mcp.tool()
+def get_activity_hr_zones(activity_id: int) -> dict:
+    """Get time spent in each heart rate zone for one activity by its Garmin activity ID."""
+    return get_client().get_activity_hr_in_timezones(activity_id)
+
+
+@mcp.tool()
+def get_personal_records() -> dict:
+    """Get the current user's personal records (e.g. fastest 5K, longest run)."""
+    return get_client().get_personal_record()
+
+
 def main() -> None:
     mcp.run()
 
