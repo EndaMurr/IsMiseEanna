@@ -38,6 +38,16 @@ need the password.
 - `get_activity_gear(activity_id)` — gear (shoes, bike, etc.) logged against one activity
 - `get_activity_hr_zones(activity_id)` — time spent in each heart rate zone for one activity
 - `get_personal_records()` — current personal records (fastest 5K, longest run, etc.)
+- `get_sleep_data(date)` — sleep data for one date
+- `get_stress_data(date)` — stress level data for one date
+- `get_body_battery(date)` — Body Battery (energy level) data for one date
+- `get_hrv_data(date)` — heart rate variability for one date
+- `get_resting_heart_rate(date)` — resting heart rate for one date
+- `get_training_readiness(date)` — training readiness score and contributing factors for one date
+- `get_training_status(date)` — training status (productive, peaking, detraining, etc.) for one date
+- `get_max_metrics(date)` — fitness age and VO2 max for one date
+- `get_race_predictions()` — predicted 5K/10K/half/marathon times as of today
+- `get_endurance_score(date)` — endurance score for one date
 
 ## Using with Claude Desktop / Claude Code
 

@@ -72,6 +72,66 @@ def get_personal_records() -> dict:
     return get_client().get_personal_record()
 
 
+@mcp.tool()
+def get_sleep_data(date: str) -> dict:
+    """Get sleep data for one date (YYYY-MM-DD)."""
+    return get_client().get_sleep_data(date)
+
+
+@mcp.tool()
+def get_stress_data(date: str) -> dict:
+    """Get stress level data for one date (YYYY-MM-DD)."""
+    return get_client().get_stress_data(date)
+
+
+@mcp.tool()
+def get_body_battery(date: str) -> list[dict]:
+    """Get Body Battery (energy level) data for one date (YYYY-MM-DD)."""
+    return get_client().get_body_battery(date)
+
+
+@mcp.tool()
+def get_hrv_data(date: str) -> dict | None:
+    """Get heart rate variability (HRV) data for one date (YYYY-MM-DD)."""
+    return get_client().get_hrv_data(date)
+
+
+@mcp.tool()
+def get_resting_heart_rate(date: str) -> dict:
+    """Get resting heart rate for one date (YYYY-MM-DD)."""
+    return get_client().get_rhr_day(date)
+
+
+@mcp.tool()
+def get_training_readiness(date: str) -> dict:
+    """Get training readiness score and its contributing factors for one date (YYYY-MM-DD)."""
+    return get_client().get_training_readiness(date)
+
+
+@mcp.tool()
+def get_training_status(date: str) -> dict:
+    """Get training status (e.g. productive, peaking, detraining) for one date (YYYY-MM-DD)."""
+    return get_client().get_training_status(date)
+
+
+@mcp.tool()
+def get_max_metrics(date: str) -> dict:
+    """Get fitness age and VO2 max metrics for one date (YYYY-MM-DD)."""
+    return get_client().get_max_metrics(date)
+
+
+@mcp.tool()
+def get_race_predictions() -> dict:
+    """Get predicted race times for the 5K, 10K, half marathon, and marathon, as of today."""
+    return get_client().get_race_predictions()
+
+
+@mcp.tool()
+def get_endurance_score(date: str) -> dict:
+    """Get endurance score for one date (YYYY-MM-DD)."""
+    return get_client().get_endurance_score(date)
+
+
 def main() -> None:
     mcp.run()
 
