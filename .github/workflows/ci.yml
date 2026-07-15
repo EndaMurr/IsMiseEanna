@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [claude/garmin-mcp-server-b3sj3m]
   pull_request:
 
 jobs:
