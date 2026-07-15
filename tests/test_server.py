@@ -1,9 +1,10 @@
 from unittest.mock import MagicMock
 
 import pytest
+from fastmcp.server.auth.providers.workos import AuthKitProvider
 
 from ismiseeanna_mcp import server
-from ismiseeanna_mcp.server import _summarize
+from ismiseeanna_mcp.server import _build_auth, _summarize
 
 
 @pytest.fixture
@@ -11,6 +12,29 @@ def fake_client(monkeypatch):
     client = MagicMock()
     monkeypatch.setattr(server, "get_client", lambda: client)
     return client
+
+
+def test_build_auth_returns_none_without_authkit_domain(monkeypatch):
+    monkeypatch.delenv("WORKOS_AUTHKIT_DOMAIN", raising=False)
+    assert _build_auth() is None
+
+
+def test_build_auth_requires_base_url(monkeypatch):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example.authkit.app")
+    monkeypatch.delenv("MCP_BASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="MCP_BASE_URL"):
+        _build_auth()
+
+
+def test_build_auth_builds_authkit_provider(monkeypatch):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example.authkit.app")
+    monkeypatch.setenv("MCP_BASE_URL", "https://mcp.example.com")
+
+    auth = _build_auth()
+
+    assert isinstance(auth, AuthKitProvider)
+    assert auth.authkit_domain == "https://example.authkit.app"
+    assert str(auth.base_url).rstrip("/") == "https://mcp.example.com"
 
 
 def test_summarize_full_activity():
