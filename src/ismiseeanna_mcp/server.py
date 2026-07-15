@@ -132,6 +132,21 @@ def get_endurance_score(date: str) -> dict:
     return get_client().get_endurance_score(date)
 
 
+@mcp.tool()
+def get_daily_snapshot(date: str) -> dict:
+    """Get a combined daily health snapshot (sleep, stress, body battery,
+    resting heart rate, steps) for one date (YYYY-MM-DD), in a single call."""
+    client = get_client()
+    return {
+        "date": date,
+        "sleep": client.get_sleep_data(date),
+        "stress": client.get_stress_data(date),
+        "bodyBattery": client.get_body_battery(date),
+        "restingHeartRate": client.get_rhr_day(date),
+        "steps": client.get_steps_data(date),
+    }
+
+
 def main() -> None:
     mcp.run()
 

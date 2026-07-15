@@ -114,3 +114,27 @@ def test_passthrough_tool_calls_expected_client_method(fake_client, tool_func, c
 
     getattr(fake_client, client_method).assert_called_once_with(*args)
     assert result is sentinel
+
+
+def test_get_daily_snapshot_combines_all_metrics_for_one_date(fake_client):
+    fake_client.get_sleep_data.return_value = {"sleep": "data"}
+    fake_client.get_stress_data.return_value = {"stress": "data"}
+    fake_client.get_body_battery.return_value = [{"bodyBattery": "data"}]
+    fake_client.get_rhr_day.return_value = {"rhr": "data"}
+    fake_client.get_steps_data.return_value = [{"steps": "data"}]
+
+    result = server.get_daily_snapshot("2026-07-15")
+
+    fake_client.get_sleep_data.assert_called_once_with("2026-07-15")
+    fake_client.get_stress_data.assert_called_once_with("2026-07-15")
+    fake_client.get_body_battery.assert_called_once_with("2026-07-15")
+    fake_client.get_rhr_day.assert_called_once_with("2026-07-15")
+    fake_client.get_steps_data.assert_called_once_with("2026-07-15")
+    assert result == {
+        "date": "2026-07-15",
+        "sleep": {"sleep": "data"},
+        "stress": {"stress": "data"},
+        "bodyBattery": [{"bodyBattery": "data"}],
+        "restingHeartRate": {"rhr": "data"},
+        "steps": [{"steps": "data"}],
+    }

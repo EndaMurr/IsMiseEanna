@@ -48,6 +48,7 @@ need the password.
 - `get_max_metrics(date)` — fitness age and VO2 max for one date
 - `get_race_predictions()` — predicted 5K/10K/half/marathon times as of today
 - `get_endurance_score(date)` — endurance score for one date
+- `get_daily_snapshot(date)` — combined sleep, stress, body battery, resting heart rate, and steps for one date, in a single call
 
 ## Using with Claude Desktop / Claude Code
 
