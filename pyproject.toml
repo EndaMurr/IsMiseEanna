@@ -12,6 +12,12 @@ dependencies = [
 [project.scripts]
 ismiseeanna-mcp = "ismiseeanna_mcp.server:main"
 
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=8.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
