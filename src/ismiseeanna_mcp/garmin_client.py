@@ -2,6 +2,7 @@
 
 import os
 import stat
+import threading
 
 from garminconnect import Garmin, GarminConnectAuthenticationError
 
@@ -26,6 +27,7 @@ def _resolve_token_store() -> str:
 TOKEN_STORE = _resolve_token_store()
 
 _client: Garmin | None = None
+_client_lock = threading.Lock()
 
 
 def _secure_token_store() -> None:
@@ -52,31 +54,35 @@ def get_client() -> Garmin:
     if _client is not None:
         return _client
 
-    email = os.environ.get("GARMIN_EMAIL")
-    password = os.environ.get("GARMIN_PASSWORD")
-    if not (email and password) and not os.path.exists(TOKEN_STORE):
-        raise GarminClientError(
-            "No cached Garmin session found and GARMIN_EMAIL/GARMIN_PASSWORD "
-            "are not set. Set both env vars for the first login; the session "
-            f"is then cached at {TOKEN_STORE} so future calls don't need the "
-            "password."
-        )
+    with _client_lock:
+        if _client is not None:
+            return _client
 
-    client = Garmin(email=email, password=password)
-    try:
-        client.login(TOKEN_STORE)
-    except GarminConnectAuthenticationError as e:
-        raise GarminClientError(
-            "Garmin login failed: invalid credentials or authentication was "
-            "rejected. If this is the first run, set GARMIN_EMAIL and "
-            "GARMIN_PASSWORD; the session is then cached at "
-            f"{TOKEN_STORE} so future calls don't need the password."
-        ) from e
-    except Exception as e:
-        raise GarminClientError(
-            f"Garmin login failed unexpectedly ({type(e).__name__})."
-        ) from e
+        email = os.environ.get("GARMIN_EMAIL")
+        password = os.environ.get("GARMIN_PASSWORD")
+        if not (email and password) and not os.path.exists(TOKEN_STORE):
+            raise GarminClientError(
+                "No cached Garmin session found and GARMIN_EMAIL/GARMIN_PASSWORD "
+                "are not set. Set both env vars for the first login; the session "
+                f"is then cached at {TOKEN_STORE} so future calls don't need the "
+                "password."
+            )
 
-    _secure_token_store()
-    _client = client
-    return _client
+        client = Garmin(email=email, password=password)
+        try:
+            client.login(TOKEN_STORE)
+        except GarminConnectAuthenticationError as e:
+            raise GarminClientError(
+                "Garmin login failed: invalid credentials or authentication was "
+                "rejected. If this is the first run, set GARMIN_EMAIL and "
+                "GARMIN_PASSWORD; the session is then cached at "
+                f"{TOKEN_STORE} so future calls don't need the password."
+            ) from e
+        except Exception as e:
+            raise GarminClientError(
+                f"Garmin login failed unexpectedly ({type(e).__name__})."
+            ) from e
+
+        _secure_token_store()
+        _client = client
+        return _client

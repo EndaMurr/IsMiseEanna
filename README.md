@@ -48,6 +48,7 @@ need the password.
 - `get_max_metrics(date)` — fitness age and VO2 max for one date
 - `get_race_predictions()` — predicted 5K/10K/half/marathon times as of today
 - `get_endurance_score(date)` — endurance score for one date
+- `get_daily_snapshot(date)` — combined sleep, stress, body battery, resting heart rate, and steps for one date, in a single call
 
 ## Using with Claude Desktop / Claude Code
 
@@ -70,3 +71,51 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 
 Once a cached token exists at `~/.garminconnect`, the `env` block can be
 dropped.
+
+## Running remotely over HTTP (optional, for mobile access)
+
+By default the server runs over local stdio, which only local MCP clients
+(Claude Desktop, Claude Code CLI) can reach — this is what the setup above
+does. The Claude mobile/web apps only support **remote** MCP servers added
+as a custom connector, which need a public HTTPS endpoint and real
+authentication, since anyone who can reach the URL could otherwise read
+your health data.
+
+This server can run in that mode too, authenticated via
+[WorkOS AuthKit](https://workos.com/docs/authkit/mcp) (free for
+low-volume personal use):
+
+1. **WorkOS dashboard setup** (one-time, in your WorkOS account):
+   - Create an AuthKit-enabled application and note its AuthKit domain
+     (`https://your-project-12345.authkit.app`).
+   - Under **Applications → Configuration**, enable **Dynamic Client
+     Registration**.
+   - Enable **Resource Indicators (RFC 8707)** and add your server's public
+     URL (e.g. `https://your-domain.example.com`) as a valid resource.
+
+2. **Host it somewhere with a public HTTPS endpoint** — a small VPS behind
+   Caddy (automatic TLS), or a home server behind Cloudflare Tunnel /
+   Tailscale Funnel. This project doesn't include deployment tooling; pick
+   whichever fits how you host other things.
+
+3. **Set these environment variables** on that host, in addition to the
+   `GARMIN_*` ones above:
+
+   ```bash
+   export MCP_TRANSPORT="http"
+   export MCP_HOST="127.0.0.1"   # bind address; put a reverse proxy in front for TLS
+   export MCP_PORT="8000"
+   export WORKOS_AUTHKIT_DOMAIN="https://your-project-12345.authkit.app"
+   export MCP_BASE_URL="https://your-domain.example.com"   # the public URL clients will use
+   ```
+
+   Then run `uv run ismiseeanna-mcp` as a long-running service (e.g. via
+   systemd) behind your reverse proxy/tunnel.
+
+4. **Add it as a custom connector** in claude.ai (Settings → Connectors),
+   pointing at `MCP_BASE_URL`. It'll then be available from the mobile app
+   too, protected by AuthKit login.
+
+Leaving `WORKOS_AUTHKIT_DOMAIN` unset keeps the server running exactly as
+before (local stdio, no auth) — this is opt-in and doesn't change local
+usage.

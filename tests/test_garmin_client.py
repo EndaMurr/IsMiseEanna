@@ -1,5 +1,7 @@
 import os
 import stat
+import threading
+import time
 
 import pytest
 
@@ -116,3 +118,42 @@ def test_get_client_secures_token_store_after_login(monkeypatch, tmp_path):
 
     assert isinstance(client, FakeGarmin)
     assert stat.S_IMODE(os.stat(token_store).st_mode) == stat.S_IRUSR | stat.S_IWUSR
+
+
+def test_get_client_only_logs_in_once_under_concurrent_calls(monkeypatch, tmp_path):
+    token_store = tmp_path / "token.json"
+    monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(token_store))
+    monkeypatch.setenv("GARMIN_EMAIL", "test@example.com")
+    monkeypatch.setenv("GARMIN_PASSWORD", "hunter2")
+
+    login_count = 0
+    login_lock = threading.Lock()
+
+    class FakeGarmin:
+        def __init__(self, email=None, password=None):
+            pass
+
+        def login(self, tokenstore):
+            nonlocal login_count
+            time.sleep(0.05)
+            with login_lock:
+                login_count += 1
+            with open(tokenstore, "w") as f:
+                f.write("token")
+
+    monkeypatch.setattr(garmin_client, "Garmin", FakeGarmin)
+
+    results = []
+
+    def call_get_client():
+        results.append(garmin_client.get_client())
+
+    threads = [threading.Thread(target=call_get_client) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert login_count == 1
+    assert len(results) == 8
+    assert all(result is results[0] for result in results)

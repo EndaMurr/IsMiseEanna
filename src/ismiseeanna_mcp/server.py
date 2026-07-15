@@ -1,10 +1,35 @@
 """MCP server exposing Garmin Connect activity data as tools."""
 
-from mcp.server.fastmcp import FastMCP
+import os
+
+from fastmcp import FastMCP
+from fastmcp.server.auth.providers.workos import AuthKitProvider
 
 from .garmin_client import get_client
 
-mcp = FastMCP("ismiseeanna-garmin")
+
+def _build_auth() -> AuthKitProvider | None:
+    """Build a WorkOS AuthKit auth provider if configured for remote HTTP mode.
+
+    Local stdio usage needs no auth (the client already has local machine
+    access). Set WORKOS_AUTHKIT_DOMAIN and MCP_BASE_URL to require an
+    AuthKit-issued token when running over HTTP.
+    """
+    authkit_domain = os.environ.get("WORKOS_AUTHKIT_DOMAIN")
+    if not authkit_domain:
+        return None
+
+    base_url = os.environ.get("MCP_BASE_URL")
+    if not base_url:
+        raise RuntimeError(
+            "WORKOS_AUTHKIT_DOMAIN is set but MCP_BASE_URL is not; both are "
+            "required to enable AuthKit auth."
+        )
+
+    return AuthKitProvider(authkit_domain=authkit_domain, base_url=base_url)
+
+
+mcp = FastMCP("ismiseeanna-garmin", auth=_build_auth())
 
 
 def _summarize(activity: dict) -> dict:
@@ -132,8 +157,31 @@ def get_endurance_score(date: str) -> dict:
     return get_client().get_endurance_score(date)
 
 
+@mcp.tool()
+def get_daily_snapshot(date: str) -> dict:
+    """Get a combined daily health snapshot (sleep, stress, body battery,
+    resting heart rate, steps) for one date (YYYY-MM-DD), in a single call."""
+    client = get_client()
+    return {
+        "date": date,
+        "sleep": client.get_sleep_data(date),
+        "stress": client.get_stress_data(date),
+        "bodyBattery": client.get_body_battery(date),
+        "restingHeartRate": client.get_rhr_day(date),
+        "steps": client.get_steps_data(date),
+    }
+
+
 def main() -> None:
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport == "stdio":
+        mcp.run()
+    else:
+        mcp.run(
+            transport=transport,
+            host=os.environ.get("MCP_HOST", "127.0.0.1"),
+            port=int(os.environ.get("MCP_PORT", "8000")),
+        )
 
 
 if __name__ == "__main__":
