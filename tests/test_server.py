@@ -114,3 +114,73 @@ def test_passthrough_tool_calls_expected_client_method(fake_client, tool_func, c
 
     getattr(fake_client, client_method).assert_called_once_with(*args)
     assert result is sentinel
+
+
+def test_summarize_workout_full():
+    workout = {
+        "workoutId": 99,
+        "workoutName": "5x400m",
+        "sportType": {"sportTypeKey": "running"},
+        "estimatedDurationInSecs": 1800,
+        "updatedDate": "2026-08-01",
+    }
+    assert server._summarize_workout(workout) == {
+        "workoutId": 99,
+        "name": "5x400m",
+        "sportType": "running",
+        "estimatedDurationInSecs": 1800,
+        "updatedDate": "2026-08-01",
+    }
+
+
+def test_summarize_workout_handles_missing_fields():
+    assert server._summarize_workout({}) == {
+        "workoutId": None,
+        "name": None,
+        "sportType": None,
+        "estimatedDurationInSecs": None,
+        "updatedDate": None,
+    }
+
+
+def test_list_workouts_summarizes_and_passes_pagination(fake_client):
+    fake_client.get_workouts.return_value = [
+        {"workoutId": 1, "workoutName": "Easy Run", "sportType": {"sportTypeKey": "running"}}
+    ]
+
+    result = server.list_workouts(limit=10, start=5)
+
+    fake_client.get_workouts.assert_called_once_with(5, 10)
+    assert result[0]["workoutId"] == 1
+    assert result[0]["name"] == "Easy Run"
+
+
+def test_get_workout_passes_through(fake_client):
+    fake_client.get_workout_by_id.return_value = {"workoutId": 7}
+    assert server.get_workout(7) == {"workoutId": 7}
+    fake_client.get_workout_by_id.assert_called_once_with(7)
+
+
+def test_delete_workout_calls_client_and_confirms(fake_client):
+    result = server.delete_workout(7)
+    fake_client.delete_workout.assert_called_once_with(7)
+    assert result == "Deleted workout 7"
+
+
+def test_create_running_workout_builds_and_uploads(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 42, "workoutName": "Easy Run"}
+
+    result = server.create_running_workout(
+        "Easy Run", [{"kind": "warmup", "duration_seconds": 600}]
+    )
+
+    assert fake_client.upload_workout.call_count == 1
+    (uploaded_json,), _kwargs = fake_client.upload_workout.call_args
+    assert uploaded_json["workoutName"] == "Easy Run"
+    assert result == {"workoutId": 42, "workoutName": "Easy Run"}
+
+
+def test_create_running_workout_rejects_invalid_steps_without_calling_client(fake_client):
+    with pytest.raises(ValueError):
+        server.create_running_workout("Bad Workout", [{"kind": "warmup"}])
+    fake_client.upload_workout.assert_not_called()

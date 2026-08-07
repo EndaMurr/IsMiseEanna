@@ -3,6 +3,7 @@
 from mcp.server.fastmcp import FastMCP
 
 from .garmin_client import get_client
+from .workout_builder import WorkoutBuilderError, build_running_workout
 
 mcp = FastMCP("ismiseeanna-garmin")
 
@@ -130,6 +131,74 @@ def get_race_predictions() -> dict:
 def get_endurance_score(date: str) -> dict:
     """Get endurance score for one date (YYYY-MM-DD)."""
     return get_client().get_endurance_score(date)
+
+
+def _summarize_workout(workout: dict) -> dict:
+    return {
+        "workoutId": workout.get("workoutId"),
+        "name": workout.get("workoutName"),
+        "sportType": (workout.get("sportType") or {}).get("sportTypeKey"),
+        "estimatedDurationInSecs": workout.get("estimatedDurationInSecs"),
+        "updatedDate": workout.get("updatedDate"),
+    }
+
+
+@mcp.tool()
+def list_workouts(limit: int = 20, start: int = 0) -> list[dict]:
+    """List saved Garmin workouts, most recently updated first."""
+    workouts = get_client().get_workouts(start, limit)
+    return [_summarize_workout(w) for w in workouts]
+
+
+@mcp.tool()
+def get_workout(workout_id: int) -> dict:
+    """Get the full step-by-step definition of one saved workout by its Garmin workout ID."""
+    return get_client().get_workout_by_id(workout_id)
+
+
+@mcp.tool()
+def delete_workout(workout_id: int) -> str:
+    """Delete a saved workout from the Garmin workout library by its Garmin workout ID."""
+    get_client().delete_workout(workout_id)
+    return f"Deleted workout {workout_id}"
+
+
+@mcp.tool()
+def create_running_workout(
+    name: str, steps: list[dict], description: str | None = None
+) -> dict:
+    """Create and save a structured running workout on Garmin Connect.
+
+    Translate the user's natural-language workout description into a list
+    of `steps` yourself, then call this tool - there is no separate parsing
+    step. Each item in `steps` is one of:
+
+      - A plain step: {"kind": "warmup"|"cooldown"|"recovery"|"rest"|
+        "interval", "duration_seconds": <float>} (or "distance_meters"
+        instead of "duration_seconds"), optionally with
+        "target_pace_min_per_km": [low, high] (decimal minutes per km, e.g.
+        4.5 == 4:30/km) or "target_heart_rate_bpm": [low, high].
+      - A repeat block: {"kind": "repeat", "iterations": <int>,
+        "steps": [...]} wrapping a list of plain steps (e.g. an interval
+        plus its recovery) to repeat.
+
+    Example - "10 min warmup, 5x400m at 5k pace (~4:00/km) with 90s jog
+    recovery, 10 min cooldown":
+        steps=[
+            {"kind": "warmup", "duration_seconds": 600},
+            {"kind": "repeat", "iterations": 5, "steps": [
+                {"kind": "interval", "distance_meters": 400,
+                 "target_pace_min_per_km": [3.9, 4.1]},
+                {"kind": "recovery", "duration_seconds": 90},
+            ]},
+            {"kind": "cooldown", "duration_seconds": 600},
+        ]
+    """
+    try:
+        workout_json = build_running_workout(name, steps, description)
+    except WorkoutBuilderError as e:
+        raise ValueError(str(e)) from e
+    return get_client().upload_workout(workout_json)
 
 
 def main() -> None:
