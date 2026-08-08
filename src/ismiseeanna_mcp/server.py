@@ -1,14 +1,48 @@
 """MCP server exposing Garmin Connect activity data as tools."""
 
+import os
 from collections.abc import Callable
 from typing import TypeVar
 
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from pydantic import AnyHttpUrl
 
 from .garmin_client import get_client
 from .workout_builder import WorkoutBuilderError, build_running_workout
 
-mcp = FastMCP("ismiseeanna-garmin")
+
+def _build_mcp() -> FastMCP:
+    """Build the FastMCP instance, wiring in WorkOS AuthKit as the OAuth
+    authorization server when configured.
+
+    Local stdio use is unaffected: with WORKOS_AUTHKIT_DOMAIN and
+    MCP_RESOURCE_URL unset (the default), this returns a plain, unauthenticated
+    FastMCP instance exactly as before. Both must be set to opt into running
+    as an OAuth-protected resource server (see README's "Hosted deployment"
+    section) - that's the mode a public streamable-http deployment should use.
+    """
+    authkit_domain = os.environ.get("WORKOS_AUTHKIT_DOMAIN")
+    resource_url = os.environ.get("MCP_RESOURCE_URL")
+    if not authkit_domain or not resource_url:
+        return FastMCP("ismiseeanna-garmin")
+
+    from .auth import WorkOSTokenVerifier
+
+    return FastMCP(
+        "ismiseeanna-garmin",
+        token_verifier=WorkOSTokenVerifier(authkit_domain, resource_url),
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl(authkit_domain),
+            resource_server_url=AnyHttpUrl(resource_url),
+            required_scopes=[],
+        ),
+        host=os.environ.get("MCP_HOST", "0.0.0.0"),
+        port=int(os.environ.get("PORT", "8000")),
+    )
+
+
+mcp = _build_mcp()
 
 T = TypeVar("T")
 
@@ -271,7 +305,8 @@ def list_scheduled_workouts(year: int, month: int) -> dict:
 
 
 def main() -> None:
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":

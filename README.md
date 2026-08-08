@@ -143,3 +143,83 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 
 Once a cached token exists at `~/.garminconnect`, the `env` block can be
 dropped.
+
+## Hosted deployment (remote access from claude.ai)
+
+By default this server runs over stdio for local use, as above. It can
+instead run as a remote MCP server reachable over HTTPS, protected by OAuth,
+so it can be added as a [custom connector](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+in claude.ai (web, desktop, or mobile) rather than only from a local client
+config.
+
+claude.ai requires a custom connector's server to act as an OAuth 2.1
+*resource server* backed by an authorization server that supports Dynamic
+Client Registration (RFC 7591) - there's no "paste an API key" option in its
+UI. Rather than hand-rolling an authorization server, this deployment uses
+[WorkOS AuthKit](https://workos.com/docs/authkit/mcp) as that authorization
+server; `src/ismiseeanna_mcp/auth.py` implements the resource-server side
+(verifying AuthKit's tokens via its published JWKS, and checking that a
+token was actually issued for *this* deployment before accepting it).
+
+### 1. Set up WorkOS AuthKit
+
+1. Create a free [WorkOS](https://workos.com) account and a new project.
+2. Under **Connect → Configuration**, note your AuthKit Domain (looks like
+   `https://your-project-xxxxx.authkit.app`) - this is `WORKOS_AUTHKIT_DOMAIN`
+   below.
+3. Under **Applications → Configuration**, enable **Dynamic Client
+   Registration** (this is what lets claude.ai register itself as a client
+   automatically the first time you add the connector).
+4. Add your server's MCP endpoint URL as a valid **resource indicator**
+   (e.g. `https://<your-app>.fly.dev/mcp`) - it must exactly match
+   `MCP_RESOURCE_URL` below, since that's what's checked as the token
+   audience.
+
+### 2. Deploy
+
+The Garmin session token needs a durable disk to survive restarts, so this
+targets [Fly.io](https://fly.io) (a small always-on VM + a persistent
+volume, roughly $2-5/mo) via the included `Dockerfile`/`fly.toml`. Any host
+that gives you a persistent volume works the same way.
+
+```bash
+fly launch --no-deploy          # creates the app; pick a name/region
+fly volumes create data --size 1 --region <your-region>
+fly secrets set \
+  WORKOS_AUTHKIT_DOMAIN=https://your-project-xxxxx.authkit.app \
+  MCP_RESOURCE_URL=https://<your-app>.fly.dev/mcp \
+  GARMIN_EMAIL=you@example.com \
+  GARMIN_PASSWORD=your-password    # only needed for the very first login
+fly deploy
+```
+
+After the first successful login the Garmin session token is cached on the
+volume (`GARMINTOKENS=/data/.garminconnect`, set in the `Dockerfile`), so
+`GARMIN_EMAIL`/`GARMIN_PASSWORD` can be removed again:
+
+```bash
+fly secrets unset GARMIN_EMAIL GARMIN_PASSWORD
+```
+
+### 3. Add the connector in claude.ai
+
+Go to **Settings → Connectors → Add custom connector** and enter
+`https://<your-app>.fly.dev/mcp`. claude.ai will discover the AuthKit
+authorization server from the server's metadata, register itself as a
+client, and walk you through logging in - after that the connector is
+available in any chat.
+
+### Relevant environment variables
+
+| Variable | Required for | Purpose |
+|---|---|---|
+| `WORKOS_AUTHKIT_DOMAIN` | hosted mode | Your AuthKit project domain; also enables OAuth (unset = plain local stdio server) |
+| `MCP_RESOURCE_URL` | hosted mode | This deployment's public MCP URL; checked as the token audience |
+| `MCP_TRANSPORT` | hosted mode | Set to `streamable-http` (default `stdio`) |
+| `GARMINTOKENS` | optional | Where the Garmin session token is cached (default `~/.garminconnect`) |
+| `GARMIN_EMAIL` / `GARMIN_PASSWORD` | first login only | Not needed once a session token is cached |
+
+Both `WORKOS_AUTHKIT_DOMAIN` and `MCP_RESOURCE_URL` must be set together to
+enable OAuth - if either is missing, the server falls back to a plain,
+unauthenticated instance, which is fine for local stdio use but should never
+be exposed to the public internet.
