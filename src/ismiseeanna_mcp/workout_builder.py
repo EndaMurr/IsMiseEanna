@@ -16,6 +16,7 @@ real upload, and adjust here if a step doesn't render as expected.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 SPORT_TYPE_RUNNING = {"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1}
@@ -66,9 +67,63 @@ _ITERATIONS_CONDITION = {
 
 _EASY_PACE_MIN_PER_KM = 6.0  # fallback effort used only to estimate duration
 
+# Sanity bounds on user/LLM-supplied step values. These aren't Garmin API
+# limits (which aren't documented) - they exist so a malformed or malicious
+# tool call fails with a clear WorkoutBuilderError instead of an uncaught
+# RecursionError/OverflowError/TypeError, or a nonsensical payload silently
+# reaching the real account.
+_MAX_DURATION_SECONDS = 24 * 60 * 60  # 24 hours
+_MAX_DISTANCE_METERS = 200_000  # 200 km
+_MAX_ITERATIONS = 100
+_MIN_PACE_MIN_PER_KM = 1.0
+_MAX_PACE_MIN_PER_KM = 60.0
+_MIN_HEART_RATE_BPM = 30
+_MAX_HEART_RATE_BPM = 250
+
 
 class WorkoutBuilderError(ValueError):
     """Raised when the requested workout steps can't be turned into a payload."""
+
+
+def _finite_number(value: object, field_name: str) -> float:
+    """Coerce ``value`` to a finite float, or raise WorkoutBuilderError."""
+    if isinstance(value, bool):  # bool is a subclass of int; reject explicitly
+        raise WorkoutBuilderError(f"{field_name} must be a number (got {value!r})")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as e:
+        raise WorkoutBuilderError(f"{field_name} must be a number (got {value!r})") from e
+    if not math.isfinite(number):
+        raise WorkoutBuilderError(f"{field_name} must be a finite number (got {value!r})")
+    return number
+
+
+def _bounded(value: object, field_name: str, min_value: float, max_value: float) -> float:
+    """Validate ``value`` is a finite number within [min_value, max_value]."""
+    number = _finite_number(value, field_name)
+    if not (min_value <= number <= max_value):
+        raise WorkoutBuilderError(
+            f"{field_name} must be between {min_value} and {max_value} (got {number})"
+        )
+    return number
+
+
+def _bounded_int(value: object, field_name: str, min_value: int, max_value: int) -> int:
+    """Validate ``value`` is an integer (or integer-valued float, since JSON
+    has no separate int type) within [min_value, max_value]."""
+    if isinstance(value, bool):
+        raise WorkoutBuilderError(f"{field_name} must be an integer (got {value!r})")
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, float) and value.is_integer():
+        number = int(value)
+    else:
+        raise WorkoutBuilderError(f"{field_name} must be an integer (got {value!r})")
+    if not (min_value <= number <= max_value):
+        raise WorkoutBuilderError(
+            f"{field_name} must be between {min_value} and {max_value} (got {number})"
+        )
+    return number
 
 
 def pace_to_speed_mps(pace_min_per_km: float) -> float:
@@ -97,8 +152,12 @@ def _end_condition(step: dict) -> tuple[dict, float]:
             f"(got: {step!r})"
         )
     if has_duration:
-        return _TIME_CONDITION, float(step["duration_seconds"])
-    return _DISTANCE_CONDITION, float(step["distance_meters"])
+        value = _bounded(
+            step["duration_seconds"], "duration_seconds", 1, _MAX_DURATION_SECONDS
+        )
+        return _TIME_CONDITION, value
+    value = _bounded(step["distance_meters"], "distance_meters", 1, _MAX_DISTANCE_METERS)
+    return _DISTANCE_CONDITION, value
 
 
 def _target(step: dict) -> tuple[dict, float | None, float | None]:
@@ -109,12 +168,20 @@ def _target(step: dict) -> tuple[dict, float | None, float | None]:
     if pace_range:
         if len(pace_range) != 2:
             raise WorkoutBuilderError("target_pace_min_per_km needs exactly 2 values")
-        low, high = sorted(pace_to_speed_mps(p) for p in pace_range)
+        paces = [
+            _bounded(p, "target_pace_min_per_km", _MIN_PACE_MIN_PER_KM, _MAX_PACE_MIN_PER_KM)
+            for p in pace_range
+        ]
+        low, high = sorted(pace_to_speed_mps(p) for p in paces)
         return _SPEED_TARGET, low, high
     if hr_range:
         if len(hr_range) != 2:
             raise WorkoutBuilderError("target_heart_rate_bpm needs exactly 2 values")
-        low, high = sorted(float(b) for b in hr_range)
+        bpms = [
+            _bounded(b, "target_heart_rate_bpm", _MIN_HEART_RATE_BPM, _MAX_HEART_RATE_BPM)
+            for b in hr_range
+        ]
+        low, high = sorted(bpms)
         return _HR_TARGET, low, high
     return _NO_TARGET, None, None
 
@@ -161,18 +228,31 @@ class _StepOrder:
         return value
 
 
-def _build_steps(steps: list[dict], order: _StepOrder) -> tuple[list[dict], float]:
+def _build_steps(
+    steps: list[dict], order: _StepOrder, in_repeat: bool = False
+) -> tuple[list[dict], float]:
+    if not isinstance(steps, list):
+        raise WorkoutBuilderError(f"'steps' must be a list (got {steps!r})")
+
     built: list[dict] = []
     total_seconds = 0.0
     for step in steps:
+        if not isinstance(step, dict):
+            raise WorkoutBuilderError(f"Each step must be an object (got {step!r})")
         if step.get("kind") == "repeat":
+            if in_repeat:
+                raise WorkoutBuilderError(
+                    "Repeat blocks can't be nested inside another repeat block"
+                )
             repeat_order = order.take()
-            child_steps, child_seconds = _build_steps(step.get("steps") or [], order)
+            child_steps, child_seconds = _build_steps(
+                step.get("steps") or [], order, in_repeat=True
+            )
             if not child_steps:
                 raise WorkoutBuilderError("A repeat step needs a non-empty 'steps' list")
-            iterations = int(step.get("iterations", 0))
-            if iterations < 1:
-                raise WorkoutBuilderError("A repeat step needs iterations >= 1")
+            iterations = _bounded_int(
+                step.get("iterations", 0), "iterations", 1, _MAX_ITERATIONS
+            )
             built.append(
                 {
                     "type": "RepeatGroupDTO",
@@ -209,7 +289,7 @@ def build_running_workout(
     """
     if not name or not name.strip():
         raise WorkoutBuilderError("Workout name is required")
-    if not steps:
+    if not isinstance(steps, list) or not steps:
         raise WorkoutBuilderError("At least one step is required")
 
     built_steps, total_seconds = _build_steps(steps, _StepOrder())

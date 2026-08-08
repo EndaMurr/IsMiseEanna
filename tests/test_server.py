@@ -161,10 +161,31 @@ def test_get_workout_passes_through(fake_client):
     fake_client.get_workout_by_id.assert_called_once_with(7)
 
 
-def test_delete_workout_calls_client_and_confirms(fake_client):
+def test_delete_workout_looks_up_name_then_deletes(fake_client):
+    fake_client.get_workout_by_id.return_value = {"workoutId": 7, "workoutName": "Easy Run"}
+
     result = server.delete_workout(7)
+
+    fake_client.get_workout_by_id.assert_called_once_with(7)
     fake_client.delete_workout.assert_called_once_with(7)
-    assert result == "Deleted workout 7"
+    assert result == "Deleted workout 7 ('Easy Run')"
+
+
+def test_delete_workout_falls_back_to_generic_name(fake_client):
+    fake_client.get_workout_by_id.return_value = {"workoutId": 7}
+
+    result = server.delete_workout(7)
+
+    assert result == "Deleted workout 7 ('workout')"
+
+
+def test_delete_workout_does_not_delete_if_lookup_fails(fake_client):
+    fake_client.get_workout_by_id.side_effect = ValueError("not found")
+
+    with pytest.raises(RuntimeError):
+        server.delete_workout(7)
+
+    fake_client.delete_workout.assert_not_called()
 
 
 def test_create_running_workout_builds_and_uploads(fake_client):
@@ -184,3 +205,41 @@ def test_create_running_workout_rejects_invalid_steps_without_calling_client(fak
     with pytest.raises(ValueError):
         server.create_running_workout("Bad Workout", [{"kind": "warmup"}])
     fake_client.upload_workout.assert_not_called()
+
+
+def test_create_running_workout_sanitizes_upload_errors(fake_client):
+    fake_client.upload_workout.side_effect = ValueError(
+        "boom: leaked internal detail, session=abc123"
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        server.create_running_workout(
+            "Easy Run", [{"kind": "warmup", "duration_seconds": 600}]
+        )
+
+    assert "leaked internal detail" not in str(exc_info.value)
+    assert "session=abc123" not in str(exc_info.value)
+    assert "ValueError" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "tool_func, client_method, args",
+    [
+        (server.list_activities, "get_activities", ()),
+        (server.get_activity_details, "get_activity_details", (42,)),
+        (server.get_personal_records, "get_personal_record", ()),
+        (server.get_sleep_data, "get_sleep_data", ("2026-07-15",)),
+        (server.list_workouts, "get_workouts", ()),
+        (server.get_workout, "get_workout_by_id", (7,)),
+    ],
+)
+def test_tool_calls_sanitize_client_exceptions(fake_client, tool_func, client_method, args):
+    getattr(fake_client, client_method).side_effect = ValueError(
+        "boom: sensitive detail should not leak"
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        tool_func(*args)
+
+    assert "sensitive detail" not in str(exc_info.value)
+    assert "ValueError" in str(exc_info.value)

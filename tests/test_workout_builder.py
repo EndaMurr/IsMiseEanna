@@ -214,3 +214,135 @@ def test_repeat_block_requires_at_least_one_iteration():
 def test_unknown_step_kind_rejected():
     with pytest.raises(WorkoutBuilderError):
         build_running_workout("Run", [{"kind": "sprint", "duration_seconds": 60}])
+
+
+@pytest.mark.parametrize("bad_duration", [float("inf"), float("nan"), -5, 0, "abc", None, True])
+def test_duration_seconds_rejects_invalid_values(bad_duration):
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run", [{"kind": "warmup", "duration_seconds": bad_duration}]
+        )
+
+
+def test_duration_seconds_rejects_above_cap():
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run", [{"kind": "warmup", "duration_seconds": 25 * 60 * 60}]
+        )
+
+
+@pytest.mark.parametrize("bad_distance", [float("inf"), float("nan"), -5, 0, "abc"])
+def test_distance_meters_rejects_invalid_values(bad_distance):
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run", [{"kind": "interval", "distance_meters": bad_distance}]
+        )
+
+
+def test_distance_meters_rejects_above_cap():
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run", [{"kind": "interval", "distance_meters": 200_001}]
+        )
+
+
+@pytest.mark.parametrize("bad_pace", [0.5, 61, float("inf"), float("nan"), "fast"])
+def test_target_pace_rejects_out_of_bounds_values(bad_pace):
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run",
+            [
+                {
+                    "kind": "interval",
+                    "duration_seconds": 300,
+                    "target_pace_min_per_km": [bad_pace, 5.0],
+                }
+            ],
+        )
+
+
+@pytest.mark.parametrize("bad_bpm", [10, 300, float("inf"), float("nan"), "fast"])
+def test_target_heart_rate_rejects_out_of_bounds_values(bad_bpm):
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run",
+            [
+                {
+                    "kind": "interval",
+                    "duration_seconds": 300,
+                    "target_heart_rate_bpm": [bad_bpm, 150],
+                }
+            ],
+        )
+
+
+@pytest.mark.parametrize("bad_iterations", [0, -1, 101, 5.5, "5", None, True])
+def test_repeat_iterations_rejects_invalid_values(bad_iterations):
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout(
+            "Run",
+            [
+                {
+                    "kind": "repeat",
+                    "iterations": bad_iterations,
+                    "steps": [{"kind": "interval", "duration_seconds": 60}],
+                }
+            ],
+        )
+
+
+def test_repeat_iterations_accepts_integer_valued_float():
+    workout = build_running_workout(
+        "Run",
+        [
+            {
+                "kind": "repeat",
+                "iterations": 5.0,
+                "steps": [{"kind": "interval", "duration_seconds": 60}],
+            }
+        ],
+    )
+    repeat_group = workout["workoutSegments"][0]["workoutSteps"][0]
+    assert repeat_group["numberOfIterations"] == 5
+
+
+def test_nested_repeat_blocks_are_rejected():
+    with pytest.raises(WorkoutBuilderError, match="nested"):
+        build_running_workout(
+            "Run",
+            [
+                {
+                    "kind": "repeat",
+                    "iterations": 3,
+                    "steps": [
+                        {
+                            "kind": "repeat",
+                            "iterations": 2,
+                            "steps": [{"kind": "interval", "duration_seconds": 60}],
+                        }
+                    ],
+                }
+            ],
+        )
+
+
+def test_steps_must_be_a_list():
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout("Run", "not-a-list")
+
+
+def test_each_step_must_be_a_dict():
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout("Run", ["not-a-dict"])
+
+
+def test_deeply_nested_repeat_payload_raises_cleanly_not_recursion_error():
+    # A payload built to try to blow the recursion limit via nested repeats
+    # must be rejected as soon as the second level of nesting is seen,
+    # rather than recursing arbitrarily deep.
+    steps = [{"kind": "interval", "duration_seconds": 60}]
+    for _ in range(5000):
+        steps = [{"kind": "repeat", "iterations": 1, "steps": steps}]
+
+    with pytest.raises(WorkoutBuilderError):
+        build_running_workout("Run", steps)

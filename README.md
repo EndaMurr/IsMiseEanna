@@ -102,6 +102,11 @@ watch. A few caveats worth knowing:
   library itself) - check the created workout in the Garmin Connect app
   after your first real use, and open an issue/PR if something doesn't
   render as expected.
+- Step values are sanity-checked (durations up to 24h, distances up to
+  200km, paces between 1-60 min/km, heart rates between 30-250bpm, up to
+  100 repeat iterations, and repeat blocks can't be nested) so a malformed
+  or unexpected request fails with a clear error instead of silently
+  producing a nonsensical workout.
 
 ## Using with Claude Desktop / Claude Code
 
