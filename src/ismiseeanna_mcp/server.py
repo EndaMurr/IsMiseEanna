@@ -190,7 +190,10 @@ def delete_workout(workout_id: int) -> str:
 
 @mcp.tool()
 def create_running_workout(
-    name: str, steps: list[dict], description: str | None = None
+    name: str,
+    steps: list[dict],
+    description: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """Create and save a structured running workout on Garmin Connect.
 
@@ -218,12 +221,53 @@ def create_running_workout(
             ]},
             {"kind": "cooldown", "duration_seconds": 600},
         ]
+
+    Pass `date` (YYYY-MM-DD) to also schedule the new workout onto the
+    Garmin Connect calendar for that date in the same call - equivalent to
+    calling schedule_workout afterwards with the returned workoutId.
     """
     try:
         workout_json = build_running_workout(name, steps, description)
     except WorkoutBuilderError as e:
         raise ValueError(str(e)) from e
-    return _call_client(lambda: get_client().upload_workout(workout_json))
+    created = _call_client(lambda: get_client().upload_workout(workout_json))
+    if date:
+        workout_id = created.get("workoutId")
+        if workout_id is None:
+            raise RuntimeError(
+                "Workout was created but Garmin didn't return a workoutId, so "
+                "it couldn't be scheduled. Use schedule_workout once you know "
+                "the workout's ID (e.g. from list_workouts)."
+            )
+        scheduled = _call_client(lambda: get_client().schedule_workout(workout_id, date))
+        created = {**created, "scheduled": scheduled}
+    return created
+
+
+@mcp.tool()
+def schedule_workout(workout_id: int, date: str) -> dict:
+    """Schedule a saved workout onto a specific date (YYYY-MM-DD) on the
+    Garmin Connect calendar. `workout_id` is the workout template's own ID
+    (e.g. from create_running_workout's result or list_workouts), not a
+    scheduled-workout ID."""
+    return _call_client(lambda: get_client().schedule_workout(workout_id, date))
+
+
+@mcp.tool()
+def unschedule_workout(scheduled_workout_id: int) -> str:
+    """Remove a scheduled workout from the Garmin Connect calendar without
+    deleting the underlying workout template. `scheduled_workout_id` is the
+    ID of the calendar entry (e.g. from schedule_workout's or
+    list_scheduled_workouts' result), not the workout template's own ID."""
+    _call_client(lambda: get_client().unschedule_workout(scheduled_workout_id))
+    return f"Removed scheduled workout {scheduled_workout_id} from the calendar"
+
+
+@mcp.tool()
+def list_scheduled_workouts(year: int, month: int) -> dict:
+    """List workouts scheduled on the Garmin Connect calendar for one month
+    (month: 1-12)."""
+    return _call_client(lambda: get_client().get_scheduled_workouts(year, month))
 
 
 def main() -> None:

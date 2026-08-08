@@ -57,11 +57,18 @@ need the password.
 - `list_workouts(limit, start)` — saved workouts in your Garmin workout library
 - `get_workout(workout_id)` — full step-by-step definition of one saved workout
 - `delete_workout(workout_id)` — delete a saved workout
-- `create_running_workout(name, steps, description)` — build and save a
-  structured running workout from a list of steps (warmup/cooldown/
+- `create_running_workout(name, steps, description, date)` — build and save
+  a structured running workout from a list of steps (warmup/cooldown/
   recovery/rest/interval, each with a duration or distance, and an optional
   pace or heart-rate target) and/or repeat blocks (e.g. 5x400m). See the
-  tool's docstring for the exact step schema.
+  tool's docstring for the exact step schema. Pass `date` (`YYYY-MM-DD`) to
+  also schedule it onto the Garmin Connect calendar in the same call.
+- `schedule_workout(workout_id, date)` — put an existing saved workout onto
+  the Garmin Connect calendar for a date (`YYYY-MM-DD`)
+- `unschedule_workout(scheduled_workout_id)` — remove a workout from the
+  calendar without deleting the underlying workout template
+- `list_scheduled_workouts(year, month)` — what's on the Garmin Connect
+  calendar for a given month
 
 ## Creating workouts with natural language
 
@@ -92,7 +99,14 @@ Claude turns that into a `create_running_workout` call with structured
 ```
 
 The workout is saved to your Garmin workout library, ready to sync to a
-watch. A few caveats worth knowing:
+watch. Add "...and put it on my calendar for Saturday" (or just include a
+date up front) and Claude will also pass `date` so the workout lands on
+that day's calendar entry in the same call - no separate scheduling step
+needed, and no need to drag it onto a day in the Garmin Connect app
+yourself. Already-created workouts can be scheduled or unscheduled
+afterwards too, with `schedule_workout`/`unschedule_workout`.
+
+A few caveats worth knowing:
 
 - Only running workouts are supported for now (cycling/swimming/walking
   would follow the same pattern if you need them).

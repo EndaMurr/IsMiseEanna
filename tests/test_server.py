@@ -231,6 +231,8 @@ def test_create_running_workout_sanitizes_upload_errors(fake_client):
         (server.get_sleep_data, "get_sleep_data", ("2026-07-15",)),
         (server.list_workouts, "get_workouts", ()),
         (server.get_workout, "get_workout_by_id", (7,)),
+        (server.schedule_workout, "schedule_workout", (42, "2026-08-10")),
+        (server.list_scheduled_workouts, "get_scheduled_workouts", (2026, 8)),
     ],
 )
 def test_tool_calls_sanitize_client_exceptions(fake_client, tool_func, client_method, args):
@@ -243,3 +245,59 @@ def test_tool_calls_sanitize_client_exceptions(fake_client, tool_func, client_me
 
     assert "sensitive detail" not in str(exc_info.value)
     assert "ValueError" in str(exc_info.value)
+
+
+def test_create_running_workout_schedules_when_date_given(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 42, "workoutName": "Easy Run"}
+    fake_client.schedule_workout.return_value = {"scheduleId": 99, "date": "2026-08-10"}
+
+    result = server.create_running_workout(
+        "Easy Run",
+        [{"kind": "warmup", "duration_seconds": 600}],
+        date="2026-08-10",
+    )
+
+    fake_client.schedule_workout.assert_called_once_with(42, "2026-08-10")
+    assert result["workoutId"] == 42
+    assert result["scheduled"] == {"scheduleId": 99, "date": "2026-08-10"}
+
+
+def test_create_running_workout_does_not_schedule_without_date(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 42, "workoutName": "Easy Run"}
+
+    result = server.create_running_workout(
+        "Easy Run", [{"kind": "warmup", "duration_seconds": 600}]
+    )
+
+    fake_client.schedule_workout.assert_not_called()
+    assert "scheduled" not in result
+
+
+def test_create_running_workout_raises_clearly_if_no_workout_id_to_schedule(fake_client):
+    fake_client.upload_workout.return_value = {"workoutName": "Easy Run"}  # no workoutId
+
+    with pytest.raises(RuntimeError, match="workoutId"):
+        server.create_running_workout(
+            "Easy Run",
+            [{"kind": "warmup", "duration_seconds": 600}],
+            date="2026-08-10",
+        )
+    fake_client.schedule_workout.assert_not_called()
+
+
+def test_schedule_workout_passes_through(fake_client):
+    fake_client.schedule_workout.return_value = {"scheduleId": 99}
+    assert server.schedule_workout(42, "2026-08-10") == {"scheduleId": 99}
+    fake_client.schedule_workout.assert_called_once_with(42, "2026-08-10")
+
+
+def test_unschedule_workout_calls_client_and_confirms(fake_client):
+    result = server.unschedule_workout(99)
+    fake_client.unschedule_workout.assert_called_once_with(99)
+    assert result == "Removed scheduled workout 99 from the calendar"
+
+
+def test_list_scheduled_workouts_passes_through(fake_client):
+    fake_client.get_scheduled_workouts.return_value = {"days": []}
+    assert server.list_scheduled_workouts(2026, 8) == {"days": []}
+    fake_client.get_scheduled_workouts.assert_called_once_with(2026, 8)
