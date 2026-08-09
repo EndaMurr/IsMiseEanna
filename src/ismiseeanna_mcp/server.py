@@ -3,9 +3,11 @@
 import os
 from collections.abc import Callable
 from typing import TypeVar
+from urllib.parse import urlparse
 
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 
 from .garmin_client import get_client
@@ -29,6 +31,14 @@ def _build_mcp() -> FastMCP:
 
     from .auth import WorkOSTokenVerifier
 
+    # The mcp SDK's DNS-rebinding protection rejects any Host/Origin header
+    # not on an explicit allowlist - which, left unset, means it rejects
+    # *everything* once a reverse proxy (Caddy/Fly's edge) forwards the real
+    # public hostname through. Derive the allowlist from MCP_RESOURCE_URL so
+    # this doesn't need yet another env var kept in sync with it.
+    resource_host = urlparse(resource_url).netloc
+    resource_origin = f"{urlparse(resource_url).scheme}://{resource_host}"
+
     return FastMCP(
         "ismiseeanna-garmin",
         token_verifier=WorkOSTokenVerifier(authkit_domain, resource_url),
@@ -36,6 +46,10 @@ def _build_mcp() -> FastMCP:
             issuer_url=AnyHttpUrl(authkit_domain),
             resource_server_url=AnyHttpUrl(resource_url),
             required_scopes=[],
+        ),
+        transport_security=TransportSecuritySettings(
+            allowed_hosts=[resource_host, f"{resource_host}:*"],
+            allowed_origins=[resource_origin],
         ),
         host=os.environ.get("MCP_HOST", "0.0.0.0"),
         port=int(os.environ.get("PORT", "8000")),
