@@ -32,7 +32,7 @@ echo "==> Installing Caddy (reverse proxy + automatic HTTPS)"
 apt-get update -qq
 apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl git
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  | gpg --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
   | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
 chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -52,6 +52,10 @@ mkdir -p "$DATA_DIR"
 chown "$APP_USER":"$APP_USER" "$DATA_DIR"
 
 echo "==> Fetching application code (ref: $GIT_REF)"
+# The app directory ends up owned by $APP_USER (chown'd below), but this
+# script runs as root - git refuses to operate on a directory owned by
+# another user unless it's marked safe first.
+git config --global --add safe.directory "$APP_DIR"
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch origin "$GIT_REF"
   git -C "$APP_DIR" checkout "$GIT_REF"
