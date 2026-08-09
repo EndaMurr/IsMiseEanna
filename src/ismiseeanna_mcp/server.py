@@ -273,6 +273,18 @@ def create_running_workout(
     Pass `date` (YYYY-MM-DD) to also schedule the new workout onto the
     Garmin Connect calendar for that date in the same call - equivalent to
     calling schedule_workout afterwards with the returned workoutId.
+
+    If the user doesn't give an explicit pace or HR target for an easy/
+    recovery-effort step (recovery steps, or a whole run described as
+    "easy"/"recovery"), don't leave it unset by default - first call
+    list_activities or search_activities_by_date, find a handful of their
+    recent runs of similar effort (by name/type, or just the slower end of
+    their recent paces), compute pace from distanceMeters/durationSeconds,
+    and derive a target_pace_min_per_km range from that (e.g. a bit slower
+    than their recent easy-run average) before calling this tool. Mention
+    briefly what those runs/pace you based it on were, so the user can
+    sanity-check it. Skip this lookup if the user already gave a pace/HR
+    target, or asked for one with no target at all (e.g. a plain rest step).
     """
     try:
         workout_json = build_running_workout(name, steps, description)
