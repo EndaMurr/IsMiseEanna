@@ -253,7 +253,9 @@ def create_running_workout(
         "interval", "duration_seconds": <float>} (or "distance_meters"
         instead of "duration_seconds"), optionally with
         "target_pace_min_per_km": [low, high] (decimal minutes per km, e.g.
-        4.5 == 4:30/km) or "target_heart_rate_bpm": [low, high].
+        4.5 == 4:30/km) or "target_heart_rate_bpm": [low, high]. Prefer
+        pace over heart rate by default - only use target_heart_rate_bpm
+        if the user specifically asks for a heart-rate-based target.
       - A repeat block: {"kind": "repeat", "iterations": <int>,
         "steps": [...]} wrapping a list of plain steps (e.g. an interval
         plus its recovery) to repeat. Repeat blocks can't be nested.
@@ -276,15 +278,24 @@ def create_running_workout(
 
     If the user doesn't give an explicit pace or HR target for an easy/
     recovery-effort step (recovery steps, or a whole run described as
-    "easy"/"recovery"), don't leave it unset by default - first call
-    list_activities or search_activities_by_date, find a handful of their
-    recent runs of similar effort (by name/type, or just the slower end of
-    their recent paces), compute pace from distanceMeters/durationSeconds,
-    and derive a target_pace_min_per_km range from that (e.g. a bit slower
-    than their recent easy-run average) before calling this tool. Mention
-    briefly what those runs/pace you based it on were, so the user can
-    sanity-check it. Skip this lookup if the user already gave a pace/HR
-    target, or asked for one with no target at all (e.g. a plain rest step).
+    "easy"/"recovery"), don't leave it unset, and don't default to a
+    heart-rate target - first call list_activities or
+    search_activities_by_date, find a handful of their recent runs of
+    similar effort (by name/type, or just the slower end of their recent
+    paces), compute pace from distanceMeters/durationSeconds, and derive a
+    target_pace_min_per_km range from that (e.g. a bit slower than their
+    recent easy-run average) before calling this tool. Mention briefly what
+    those runs/pace you based it on were, so the user can sanity-check it.
+    Skip this lookup if the user already gave a pace/HR target, or asked
+    for one with no target at all (e.g. a plain rest step), or has told you
+    in this conversation that they prefer HR-based targets generally.
+
+    Before declining to create/schedule something because you believe it
+    already exists (e.g. "already scheduled for that date"), re-check with
+    a fresh call to list_scheduled_workouts/list_workouts rather than
+    relying on an earlier turn's result - the user may have changed or
+    deleted things directly in Garmin Connect since then, outside this
+    conversation.
     """
     try:
         workout_json = build_running_workout(name, steps, description)
