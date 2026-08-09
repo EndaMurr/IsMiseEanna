@@ -1,9 +1,12 @@
 """Authenticated Garmin Connect client, shared across MCP tool calls."""
 
+import logging
 import os
 import stat
 
 from garminconnect import Garmin, GarminConnectAuthenticationError
+
+logger = logging.getLogger(__name__)
 
 
 class GarminClientError(RuntimeError):
@@ -66,6 +69,7 @@ def get_client() -> Garmin:
     try:
         client.login(TOKEN_STORE)
     except GarminConnectAuthenticationError as e:
+        logger.exception("Garmin login failed (authentication rejected)")
         raise GarminClientError(
             "Garmin login failed: invalid credentials or authentication was "
             "rejected. If this is the first run, set GARMIN_EMAIL and "
@@ -73,6 +77,7 @@ def get_client() -> Garmin:
             f"{TOKEN_STORE} so future calls don't need the password."
         ) from e
     except Exception as e:
+        logger.exception("Garmin login failed unexpectedly")
         raise GarminClientError(
             f"Garmin login failed unexpectedly ({type(e).__name__})."
         ) from e

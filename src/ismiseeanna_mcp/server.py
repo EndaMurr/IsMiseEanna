@@ -1,5 +1,6 @@
 """MCP server exposing Garmin Connect activity data as tools."""
 
+import logging
 import os
 from collections.abc import Callable
 from typing import TypeVar
@@ -58,6 +59,8 @@ def _build_mcp() -> FastMCP:
 
 mcp = _build_mcp()
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T")
 
 
@@ -66,10 +69,15 @@ def _call_client(fn: Callable[[], T]) -> T:
     it reaches the MCP client - the same discipline garmin_client.get_client()
     already applies to login failures. garminconnect's own exceptions often
     embed request URLs/response bodies, which shouldn't be echoed back
-    verbatim."""
+    verbatim. The full exception is still logged server-side (e.g. to
+    journalctl under systemd) - MCP tool errors return in a normal 200
+    JSON-RPC response, not an HTTP error, so without this there'd be no
+    server-side record of what actually failed.
+    """
     try:
         return fn()
     except Exception as e:
+        logger.exception("Garmin Connect request failed")
         raise RuntimeError(f"Garmin Connect request failed ({type(e).__name__}).") from e
 
 
