@@ -86,6 +86,72 @@ def _summarize(activity: dict) -> dict:
     }
 
 
+def _estimate_recovery_pace_min_per_km() -> tuple[float, float] | None:
+    """Estimate an easy/recovery pace range from recent running history.
+
+    Recovery days are naturally an athlete's slowest runs, so this takes the
+    slowest third (by pace) of their last 20 running activities and returns a
+    modest range around that average. Best-effort: returns None (rather than
+    raising) if the history lookup fails or there isn't enough running
+    history to estimate from, since this is a fallback default, not something
+    that should ever block workout creation.
+    """
+    try:
+        activities = get_client().get_activities(0, 20)
+    except Exception:
+        return None
+
+    paces = []
+    for activity in activities:
+        type_key = (activity.get("activityType") or {}).get("typeKey") or ""
+        if "running" not in type_key:
+            continue
+        distance = activity.get("distance")
+        duration = activity.get("duration")
+        if not distance or not duration:
+            continue
+        pace = (duration / 60) / (distance / 1000)
+        if pace > 0:
+            paces.append(pace)
+
+    if len(paces) < 3:
+        return None
+
+    paces.sort()
+    slowest_third = paces[-max(1, len(paces) // 3) :]
+    avg = sum(slowest_third) / len(slowest_third)
+    return (round(avg - 0.15, 2), round(avg + 0.15, 2))
+
+
+def _fill_recovery_pace_defaults(steps: list[dict]) -> list[dict]:
+    """Fill in a target_pace_min_per_km for any recovery step that has
+    neither a pace nor an HR target, estimated from recent running history.
+
+    The estimate is computed at most once per call (even across multiple
+    recovery steps/repeat blocks) and only when actually needed. Steps that
+    already have an explicit target, or that aren't "recovery" steps, are
+    left untouched.
+    """
+    state = {"estimate": None, "computed": False}
+
+    def fill(step: dict) -> dict:
+        if step.get("kind") == "repeat":
+            return {**step, "steps": [fill(s) for s in step.get("steps", [])]}
+        if (
+            step.get("kind") == "recovery"
+            and "target_pace_min_per_km" not in step
+            and "target_heart_rate_bpm" not in step
+        ):
+            if not state["computed"]:
+                state["estimate"] = _estimate_recovery_pace_min_per_km()
+                state["computed"] = True
+            if state["estimate"] is not None:
+                return {**step, "target_pace_min_per_km": list(state["estimate"])}
+        return step
+
+    return [fill(step) for step in steps]
+
+
 @mcp.tool()
 def list_activities(limit: int = 20, start: int = 0) -> list[dict]:
     """List recent Garmin activities, most recent first, with basic summary info."""
@@ -276,19 +342,20 @@ def create_running_workout(
     Garmin Connect calendar for that date in the same call - equivalent to
     calling schedule_workout afterwards with the returned workoutId.
 
-    If the user doesn't give an explicit pace or HR target for an easy/
-    recovery-effort step (recovery steps, or a whole run described as
-    "easy"/"recovery"), don't leave it unset, and don't default to a
-    heart-rate target - first call list_activities or
-    search_activities_by_date, find a handful of their recent runs of
-    similar effort (by name/type, or just the slower end of their recent
-    paces), compute pace from distanceMeters/durationSeconds, and derive a
-    target_pace_min_per_km range from that (e.g. a bit slower than their
-    recent easy-run average) before calling this tool. Mention briefly what
-    those runs/pace you based it on were, so the user can sanity-check it.
-    Skip this lookup if the user already gave a pace/HR target, or asked
-    for one with no target at all (e.g. a plain rest step), or has told you
-    in this conversation that they prefer HR-based targets generally.
+    A "recovery"-kind step given without an explicit pace or HR target
+    automatically gets a pace estimated from the user's recent running
+    history (the slowest third of their last 20 runs) - you don't need to
+    look this up yourself for those. It's worth a one-line mention in your
+    reply so the user can sanity-check the pace it picked. For an easy/
+    recovery-effort run that doesn't use the "recovery" kind for some
+    reason (e.g. a single whole-run "interval" step described as "easy"),
+    apply the same idea yourself: look up recent similar-effort runs via
+    list_activities/search_activities_by_date and derive a
+    target_pace_min_per_km range from their actual pace rather than leaving
+    it untargeted or defaulting to heart rate. Skip all of this if the user
+    already gave a pace/HR target, asked for no target at all (e.g. a plain
+    rest step), or has told you in this conversation that they prefer
+    HR-based targets generally.
 
     Before declining to create/schedule something because you believe it
     already exists (e.g. "already scheduled for that date"), re-check with
@@ -297,6 +364,7 @@ def create_running_workout(
     deleted things directly in Garmin Connect since then, outside this
     conversation.
     """
+    steps = _fill_recovery_pace_defaults(steps)
     try:
         workout_json = build_running_workout(name, steps, description)
     except WorkoutBuilderError as e:

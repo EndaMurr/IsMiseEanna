@@ -301,3 +301,129 @@ def test_list_scheduled_workouts_passes_through(fake_client):
     fake_client.get_scheduled_workouts.return_value = {"days": []}
     assert server.list_scheduled_workouts(2026, 8) == {"days": []}
     fake_client.get_scheduled_workouts.assert_called_once_with(2026, 8)
+
+
+def _running_activity(pace_min_per_km, distance_m=10000):
+    duration = pace_min_per_km * 60 * (distance_m / 1000)
+    return {"activityType": {"typeKey": "running"}, "distance": distance_m, "duration": duration}
+
+
+def test_estimate_recovery_pace_uses_slowest_third_average(fake_client):
+    paces = [4.0, 4.2, 4.4, 4.6, 4.8, 5.0, 5.2, 5.4, 5.6]
+    fake_client.get_activities.return_value = [_running_activity(p) for p in paces]
+
+    result = server._estimate_recovery_pace_min_per_km()
+
+    assert result == (5.25, 5.55)
+    fake_client.get_activities.assert_called_once_with(0, 20)
+
+
+def test_estimate_recovery_pace_ignores_non_running_and_incomplete_activities(fake_client):
+    paces = [5.0, 5.2, 5.4, 5.6, 5.8, 6.0]
+    activities = [_running_activity(p) for p in paces]
+    activities.append({"activityType": {"typeKey": "cycling"}, "distance": 1, "duration": 1})
+    activities.append({"activityType": {"typeKey": "running"}, "distance": None, "duration": 1000})
+    activities.append({"activityType": {"typeKey": "running"}, "distance": 1000, "duration": None})
+    fake_client.get_activities.return_value = activities
+
+    result = server._estimate_recovery_pace_min_per_km()
+
+    assert result == (5.75, 6.05)
+
+
+def test_estimate_recovery_pace_returns_none_with_too_little_history(fake_client):
+    fake_client.get_activities.return_value = [_running_activity(5.0), _running_activity(5.2)]
+    assert server._estimate_recovery_pace_min_per_km() is None
+
+
+def test_estimate_recovery_pace_returns_none_on_client_error(fake_client):
+    fake_client.get_activities.side_effect = ValueError("boom")
+    assert server._estimate_recovery_pace_min_per_km() is None
+
+
+def test_fill_recovery_pace_defaults_fills_bare_recovery_step(monkeypatch):
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
+    steps = [{"kind": "recovery", "duration_seconds": 90}]
+
+    result = server._fill_recovery_pace_defaults(steps)
+
+    assert result == [
+        {"kind": "recovery", "duration_seconds": 90, "target_pace_min_per_km": [5.25, 5.55]}
+    ]
+
+
+def test_fill_recovery_pace_defaults_leaves_explicit_pace_target_alone(monkeypatch):
+    estimate = MagicMock(return_value=(5.25, 5.55))
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
+    steps = [{"kind": "recovery", "duration_seconds": 90, "target_pace_min_per_km": [6.0, 6.2]}]
+
+    result = server._fill_recovery_pace_defaults(steps)
+
+    assert result == steps
+    estimate.assert_not_called()
+
+
+def test_fill_recovery_pace_defaults_leaves_hr_target_alone(monkeypatch):
+    estimate = MagicMock(return_value=(5.25, 5.55))
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
+    steps = [{"kind": "recovery", "duration_seconds": 90, "target_heart_rate_bpm": [125, 140]}]
+
+    result = server._fill_recovery_pace_defaults(steps)
+
+    assert result == steps
+    estimate.assert_not_called()
+
+
+def test_fill_recovery_pace_defaults_recurses_into_repeat_blocks(monkeypatch):
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
+    steps = [
+        {
+            "kind": "repeat",
+            "iterations": 5,
+            "steps": [
+                {"kind": "interval", "distance_meters": 400, "target_pace_min_per_km": [3.9, 4.1]},
+                {"kind": "recovery", "duration_seconds": 90},
+            ],
+        }
+    ]
+
+    result = server._fill_recovery_pace_defaults(steps)
+
+    assert result[0]["steps"][1]["target_pace_min_per_km"] == [5.25, 5.55]
+    assert result[0]["steps"][0]["target_pace_min_per_km"] == [3.9, 4.1]
+
+
+def test_fill_recovery_pace_defaults_computes_estimate_at_most_once(monkeypatch):
+    estimate = MagicMock(return_value=(5.25, 5.55))
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
+    steps = [
+        {"kind": "recovery", "duration_seconds": 90},
+        {"kind": "recovery", "duration_seconds": 90},
+    ]
+
+    server._fill_recovery_pace_defaults(steps)
+
+    estimate.assert_called_once()
+
+
+def test_fill_recovery_pace_defaults_noop_when_estimate_unavailable(monkeypatch):
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: None)
+    steps = [{"kind": "recovery", "duration_seconds": 90}]
+
+    result = server._fill_recovery_pace_defaults(steps)
+
+    assert result == steps
+
+
+def test_create_running_workout_fills_recovery_pace_from_history(fake_client, monkeypatch):
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
+    fake_client.upload_workout.return_value = {"workoutId": 1, "workoutName": "Recovery 5K"}
+
+    server.create_running_workout("Recovery 5K", [{"kind": "recovery", "distance_meters": 5000}])
+
+    (uploaded_json,), _ = fake_client.upload_workout.call_args
+    built_step = uploaded_json["workoutSegments"][0]["workoutSteps"][0]
+    from ismiseeanna_mcp.workout_builder import _SPEED_TARGET
+
+    assert built_step["targetType"] == _SPEED_TARGET
+    assert built_step["targetValueOne"] is not None
