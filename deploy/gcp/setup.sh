@@ -40,6 +40,14 @@ chmod o+r /etc/apt/sources.list.d/caddy-stable.list
 apt-get update -qq
 apt-get install -y -qq caddy
 
+echo "==> Enabling automatic OS security updates"
+apt-get install -y -qq unattended-upgrades apt-listchanges
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+systemctl enable --now unattended-upgrades.service
+
 echo "==> Installing uv"
 if [ ! -x /root/.local/bin/uv ]; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
