@@ -1,0 +1,23 @@
+[Unit]
+Description=IsMiseEanna Garmin MCP server
+After=network.target
+
+[Service]
+Type=simple
+User=ismiseeanna
+Group=ismiseeanna
+WorkingDirectory=/opt/ismiseeanna-mcp
+EnvironmentFile=/etc/ismiseeanna-mcp.env
+ExecStart=/opt/ismiseeanna-mcp/.venv/bin/ismiseeanna-mcp
+Restart=on-failure
+RestartSec=5
+
+# Sandboxing: the service can only write to its own data directory (the
+# Garmin token cache) and nothing else on the system.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ismiseeanna-mcp
+
+[Install]
+WantedBy=multi-user.target

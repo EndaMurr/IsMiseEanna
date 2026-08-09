@@ -1,0 +1,37 @@
+# Fly.io app config for the hosted IsMiseEanna MCP server.
+#
+# One-time setup (see README's "Hosted deployment" section for the full
+# walkthrough, including the WorkOS AuthKit side):
+#
+#   fly launch --no-deploy          # creates the app, pick a name/region
+#   fly volumes create data --size 1 --region <your-region>
+#   fly secrets set \
+#     WORKOS_AUTHKIT_DOMAIN=https://your-project-xxxxx.authkit.app \
+#     MCP_RESOURCE_URL=https://<your-app>.fly.dev/mcp \
+#     GARMIN_EMAIL=you@example.com \
+#     GARMIN_PASSWORD=your-password   # only needed for the very first login
+#   fly deploy
+#
+# After the first successful login the Garmin session token is cached on the
+# volume, so GARMIN_EMAIL/GARMIN_PASSWORD can be unset again with
+# `fly secrets unset GARMIN_EMAIL GARMIN_PASSWORD`.
+
+app = "ismiseeanna-mcp"   # change to your chosen app name
+primary_region = "iad"    # change to whatever `fly platform regions` suggests as closest
+
+[build]
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

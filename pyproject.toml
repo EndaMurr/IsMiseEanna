@@ -1,12 +1,13 @@
 [project]
 name = "ismiseeanna-mcp"
 version = "0.1.0"
-description = "Local MCP server for querying Garmin Connect activities"
+description = "Local MCP server for querying and creating Garmin Connect workouts"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.2.0",
-    "garminconnect>=0.2.20,<0.3",
+    "garminconnect>=0.3.2,<0.4",
+    "pyjwt[crypto]>=2.10",
 ]
 
 [project.scripts]
