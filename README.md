@@ -167,20 +167,28 @@ token was actually issued for *this* deployment before accepting it).
 2. Under **Connect → Configuration**, note your AuthKit Domain (looks like
    `https://your-project-xxxxx.authkit.app`) - this is `WORKOS_AUTHKIT_DOMAIN`
    below.
-3. Under **Applications → Configuration**, enable **Dynamic Client
-   Registration** (this is what lets claude.ai register itself as a client
+3. In that same **Connect → Configuration** page, find **MCP Auth** and
+   enable **Dynamic Client Registration** and **Client ID Metadata
+   Document** (this is what lets claude.ai register itself as a client
    automatically the first time you add the connector).
-4. Add your server's MCP endpoint URL as a valid **resource indicator**
-   (e.g. `https://<your-app>.fly.dev/mcp`) - it must exactly match
-   `MCP_RESOURCE_URL` below, since that's what's checked as the token
-   audience.
+4. In the **MCP resource indicators** section further down that page, add
+   your server's MCP endpoint URL (e.g. `https://<your-hostname>/mcp`) - it
+   must exactly match `MCP_RESOURCE_URL` below, since that's what's checked
+   as the token audience.
 
 ### 2. Deploy
 
-The Garmin session token needs a durable disk to survive restarts, so this
-targets [Fly.io](https://fly.io) (a small always-on VM + a persistent
-volume, roughly $2-5/mo) via the included `Dockerfile`/`fly.toml`. Any host
-that gives you a persistent volume works the same way.
+The Garmin session token needs a durable disk to survive restarts, and the
+server needs a public HTTPS hostname (claude.ai requires TLS). Two deploy
+targets are set up below; either works the same way from WorkOS's and
+claude.ai's point of view - only the hostname you register as the resource
+indicator changes.
+
+<details>
+<summary><strong>Option A: Fly.io</strong> (a few $/mo, least setup)</summary>
+
+A small always-on VM + a persistent volume, via the included
+`Dockerfile`/`fly.toml`.
 
 ```bash
 fly launch --no-deploy          # creates the app; pick a name/region
@@ -201,10 +209,71 @@ volume (`GARMINTOKENS=/data/.garminconnect`, set in the `Dockerfile`), so
 fly secrets unset GARMIN_EMAIL GARMIN_PASSWORD
 ```
 
+</details>
+
+<details>
+<summary><strong>Option B: Google Cloud's Always Free <code>e2-micro</code></strong> ($0/mo indefinitely, more manual setup)</summary>
+
+GCP's Always Free tier includes one `e2-micro` VM (in `us-west1`,
+`us-central1`, or `us-east1` only) plus 30GB of persistent disk, with no
+expiration. This runs the server directly on the VM via systemd, behind
+[Caddy](https://caddyserver.com) for automatic HTTPS - no Docker needed.
+Since a free VM doesn't come with a domain name, this uses
+[sslip.io](https://sslip.io) to turn the VM's own IP into a valid public
+hostname for Caddy to get a Let's Encrypt certificate for.
+
+Everything below can be run from [Google Cloud Shell](https://shell.cloud.google.com)
+in a browser - no local `gcloud` install needed.
+
+```bash
+# Reserve a static IP so the hostname doesn't change on restart, then create
+# the VM using it and a firewall rule allowing Caddy's ports.
+gcloud compute addresses create ismiseeanna-mcp-ip --region=us-central1
+
+gcloud compute instances create ismiseeanna-mcp \
+  --zone=us-central1-a --machine-type=e2-micro \
+  --image-family=debian-12 --image-project=debian-cloud \
+  --boot-disk-size=30GB --boot-disk-type=pd-standard \
+  --address=ismiseeanna-mcp-ip --tags=ismiseeanna-mcp
+
+gcloud compute firewall-rules create allow-ismiseeanna-mcp-https \
+  --allow=tcp:80,tcp:443 --target-tags=ismiseeanna-mcp --source-ranges=0.0.0.0/0
+
+# Derive the sslip.io hostname from the reserved IP, e.g. 34.71.12.9 -> 34-71-12-9.sslip.io
+IP=$(gcloud compute addresses describe ismiseeanna-mcp-ip --region=us-central1 --format='get(address)')
+HOSTNAME="${IP//./-}.sslip.io"
+echo "Hostname: $HOSTNAME"   # register this exact value as the WorkOS resource indicator
+```
+
+Then SSH in and run the provisioning script (also in `deploy/gcp/`), which
+installs Caddy and `uv`, fetches the app, and sets up both as systemd
+services:
+
+```bash
+gcloud compute ssh ismiseeanna-mcp --zone=us-central1-a
+sudo apt-get install -y git
+git clone --branch claude/recent-builds-9osym0 https://github.com/EndaMurr/IsMiseEanna.git /tmp/setup
+sudo /tmp/setup/deploy/gcp/setup.sh "$HOSTNAME" claude/recent-builds-9osym0
+```
+
+It writes `/etc/ismiseeanna-mcp.env` from `deploy/gcp/ismiseeanna-mcp.env.example`
+on first run and tells you to fill in the real `WORKOS_AUTHKIT_DOMAIN`,
+`GARMIN_EMAIL`, and `GARMIN_PASSWORD` there, then:
+
+```bash
+sudo systemctl restart ismiseeanna-mcp
+```
+
+After the first successful login, remove `GARMIN_EMAIL`/`GARMIN_PASSWORD`
+from `/etc/ismiseeanna-mcp.env` and restart the service again.
+
+</details>
+
 ### 3. Add the connector in claude.ai
 
-Go to **Settings → Connectors → Add custom connector** and enter
-`https://<your-app>.fly.dev/mcp`. claude.ai will discover the AuthKit
+Go to **Settings → Connectors → Add custom connector** and enter your
+server's MCP URL (e.g. `https://<your-app>.fly.dev/mcp` or
+`https://<your-sslip-hostname>/mcp`). claude.ai will discover the AuthKit
 authorization server from the server's metadata, register itself as a
 client, and walk you through logging in - after that the connector is
 available in any chat.
