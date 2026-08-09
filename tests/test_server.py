@@ -13,6 +13,96 @@ def fake_client(monkeypatch):
     return client
 
 
+def test_build_mcp_returns_unauthenticated_instance_when_env_unset(monkeypatch):
+    monkeypatch.delenv("WORKOS_AUTHKIT_DOMAIN", raising=False)
+    monkeypatch.delenv("MCP_RESOURCE_URL", raising=False)
+
+    built = server._build_mcp()
+
+    assert built._token_verifier is None
+    assert built.settings.auth is None
+
+
+def test_build_mcp_stays_local_only_when_unauthenticated(monkeypatch):
+    """Fail-closed check: even if a hosted deployment's env accidentally
+    sets MCP_HOST=0.0.0.0 without the WorkOS auth vars, the unauthenticated
+    fallback must not pick that up and bind publicly - it should stay on
+    FastMCP's own local-only default regardless."""
+    monkeypatch.delenv("WORKOS_AUTHKIT_DOMAIN", raising=False)
+    monkeypatch.delenv("MCP_RESOURCE_URL", raising=False)
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("PORT", "9000")
+
+    built = server._build_mcp()
+
+    assert built.settings.host == "127.0.0.1"
+    assert built.settings.port == 8000
+
+
+@pytest.mark.parametrize("missing_var", ["WORKOS_AUTHKIT_DOMAIN", "MCP_RESOURCE_URL"])
+def test_build_mcp_falls_back_when_only_one_var_set(monkeypatch, missing_var):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example-project.authkit.app")
+    monkeypatch.setenv("MCP_RESOURCE_URL", "https://mcp.example.com/mcp")
+    monkeypatch.delenv(missing_var, raising=False)
+
+    built = server._build_mcp()
+
+    assert built._token_verifier is None
+    assert built.settings.auth is None
+
+
+def test_build_mcp_wires_auth_when_both_vars_set(monkeypatch):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example-project.authkit.app")
+    monkeypatch.setenv("MCP_RESOURCE_URL", "https://mcp.example.com/mcp")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("PORT", "9000")
+
+    built = server._build_mcp()
+
+    from ismiseeanna_mcp.auth import WorkOSTokenVerifier
+
+    assert isinstance(built._token_verifier, WorkOSTokenVerifier)
+    assert str(built.settings.auth.issuer_url) == "https://example-project.authkit.app/"
+    assert str(built.settings.auth.resource_server_url) == "https://mcp.example.com/mcp"
+    assert built.settings.host == "0.0.0.0"
+    assert built.settings.port == 9000
+
+
+def test_build_mcp_defaults_host_and_port_when_unset(monkeypatch):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example-project.authkit.app")
+    monkeypatch.setenv("MCP_RESOURCE_URL", "https://mcp.example.com/mcp")
+    monkeypatch.delenv("MCP_HOST", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
+
+    built = server._build_mcp()
+
+    assert built.settings.host == "0.0.0.0"
+    assert built.settings.port == 8000
+
+
+def test_build_mcp_derives_transport_security_allowlist_from_resource_url(monkeypatch):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example-project.authkit.app")
+    monkeypatch.setenv("MCP_RESOURCE_URL", "https://mcp.example.com/mcp")
+
+    built = server._build_mcp()
+
+    ts = built.settings.transport_security
+    assert ts.enable_dns_rebinding_protection is True
+    assert ts.allowed_hosts == ["mcp.example.com", "mcp.example.com:*"]
+    assert ts.allowed_origins == ["https://mcp.example.com"]
+
+
+def test_build_mcp_transport_security_handles_explicit_port_in_resource_url(monkeypatch):
+    monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://example-project.authkit.app")
+    monkeypatch.setenv("MCP_RESOURCE_URL", "https://mcp.example.com:8443/mcp")
+
+    built = server._build_mcp()
+
+    ts = built.settings.transport_security
+    assert ts.allowed_hosts == ["mcp.example.com:8443", "mcp.example.com:8443:*"]
+    assert ts.allowed_origins == ["https://mcp.example.com:8443"]
+
+
 def test_summarize_full_activity():
     activity = {
         "activityId": 123,
