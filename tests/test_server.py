@@ -341,6 +341,81 @@ def test_estimate_recovery_pace_returns_none_on_client_error(fake_client):
     assert server._estimate_recovery_pace_min_per_km() is None
 
 
+def test_normalize_standalone_recovery_steps_rewrites_top_level_recovery():
+    steps = [{"kind": "recovery", "distance_meters": 5000}]
+
+    result = server._normalize_standalone_recovery_steps(steps)
+
+    assert result == [{"kind": "interval", "distance_meters": 5000, "effort": "easy"}]
+
+
+def test_normalize_standalone_recovery_steps_leaves_nested_recovery_alone():
+    steps = [
+        {
+            "kind": "repeat",
+            "iterations": 5,
+            "steps": [
+                {"kind": "interval", "distance_meters": 400},
+                {"kind": "recovery", "duration_seconds": 90},
+            ],
+        }
+    ]
+
+    result = server._normalize_standalone_recovery_steps(steps)
+
+    assert result == steps
+
+
+def test_normalize_standalone_recovery_steps_leaves_other_kinds_alone():
+    steps = [{"kind": "warmup", "duration_seconds": 600}]
+
+    result = server._normalize_standalone_recovery_steps(steps)
+
+    assert result == steps
+
+
+def test_create_running_workout_renders_standalone_recovery_as_run_step(fake_client, monkeypatch):
+    """A whole standalone "Recovery 5K" must render in Garmin Connect as a
+    "Run" step (stepTypeId 3 / "interval"), not "Recover" - confirmed
+    against a real "Run" step saved through Garmin's own UI."""
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
+    fake_client.upload_workout.return_value = {"workoutId": 1, "workoutName": "Recovery 5K"}
+
+    server.create_running_workout("Recovery 5K", [{"kind": "recovery", "distance_meters": 5000}])
+
+    (uploaded_json,), _ = fake_client.upload_workout.call_args
+    built_step = uploaded_json["workoutSegments"][0]["workoutSteps"][0]
+    assert built_step["stepType"]["stepTypeKey"] == "interval"
+
+
+def test_create_running_workout_keeps_nested_recovery_as_recover_step(fake_client):
+    """A recovery jog between repeat reps must stay a "Recover" step."""
+    fake_client.upload_workout.return_value = {"workoutId": 1, "workoutName": "Intervals"}
+
+    server.create_running_workout(
+        "Intervals",
+        [
+            {
+                "kind": "repeat",
+                "iterations": 5,
+                "steps": [
+                    {
+                        "kind": "interval",
+                        "distance_meters": 400,
+                        "target_pace_min_per_km": [3.9, 4.1],
+                    },
+                    {"kind": "recovery", "duration_seconds": 90},
+                ],
+            }
+        ],
+    )
+
+    (uploaded_json,), _ = fake_client.upload_workout.call_args
+    repeat_step = uploaded_json["workoutSegments"][0]["workoutSteps"][0]
+    recovery_step = repeat_step["workoutSteps"][1]
+    assert recovery_step["stepType"]["stepTypeKey"] == "recovery"
+
+
 def test_fill_easy_pace_defaults_fills_bare_recovery_step(monkeypatch):
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
     steps = [{"kind": "recovery", "duration_seconds": 90}]

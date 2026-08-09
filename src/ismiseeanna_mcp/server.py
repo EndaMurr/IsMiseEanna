@@ -131,6 +131,31 @@ def _estimate_recovery_pace_min_per_km() -> tuple[float, float] | None:
     return (round(avg - 0.15, 2), round(avg + 0.15, 2))
 
 
+def _normalize_standalone_recovery_steps(steps: list[dict]) -> list[dict]:
+    """Reinterpret a top-level "recovery" step as a plain easy "interval"
+    step instead - Garmin Connect's "Run" step type, not "Recover".
+
+    "recovery" only makes sense as the jog/rest portion *between* hard
+    efforts inside a repeat block; a step at the top level (outside any
+    repeat) can't be "recovering" from anything, so "recovery" there is
+    always a mismodeled standalone easy/recovery run. This is a structural
+    rule, not a judgment call for the LLM to get right each time - confirmed
+    against a real "Run" step (stepTypeId 3 / "interval") saved through
+    Garmin Connect's own UI and read back via get_workout.
+
+    Only rewrites top-level steps. A "recovery" step nested inside a repeat
+    block is left untouched, since that's exactly the context where the
+    kind is meaningful.
+    """
+
+    def normalize(step: dict) -> dict:
+        if step.get("kind") == "recovery":
+            return {**step, "kind": "interval", "effort": step.get("effort", "easy")}
+        return step
+
+    return [normalize(step) for step in steps]
+
+
 def _fill_easy_pace_defaults(steps: list[dict]) -> list[dict]:
     """Fill in a target_pace_min_per_km, estimated from recent running
     history, for any step that needs an easy/recovery pace but has neither a
@@ -337,14 +362,13 @@ def create_running_workout(
         "target_pace_min_per_km": [low, high] (decimal minutes per km, e.g.
         4.5 == 4:30/km) or "target_heart_rate_bpm": [low, high]. Prefer
         pace over heart rate by default - only use target_heart_rate_bpm
-        if the user specifically asks for a heart-rate-based target.
-        "recovery" means specifically the jog/rest portion *between* hard
-        efforts in a repeat block (Garmin Connect shows it as "Recover") -
-        a whole standalone easy/recovery run is a plain "interval" step
-        (Garmin shows that as "Run"), not a "recovery" one. For any plain
-        step meant to be run at easy/recovery effort without the user
-        giving a specific target, add "effort": "easy" (regardless of
-        kind) - see below for what that does.
+        if the user specifically asks for a heart-rate-based target. Use
+        "recovery" for a whole standalone easy/recovery run as well as for
+        the jog/rest portion between hard efforts inside a repeat block -
+        both read equally naturally in plain English, and this tool
+        reinterprets a top-level "recovery" step as Garmin's "Run" step type
+        automatically (only "recovery" steps *inside* a repeat block render
+        as Garmin's "Recover" type, which is what that's actually for).
       - A repeat block: {"kind": "repeat", "iterations": <int>,
         "steps": [...]} wrapping a list of plain steps (e.g. an interval
         plus its recovery) to repeat. Repeat blocks can't be nested.
@@ -362,21 +386,20 @@ def create_running_workout(
         ]
 
     Example - "an easy recovery 5k tomorrow", with no pace given:
-        steps=[{"kind": "interval", "distance_meters": 5000, "effort": "easy"}]
+        steps=[{"kind": "recovery", "distance_meters": 5000}]
 
     Pass `date` (YYYY-MM-DD) to also schedule the new workout onto the
     Garmin Connect calendar for that date in the same call - equivalent to
     calling schedule_workout afterwards with the returned workoutId.
 
-    A step with "effort": "easy", or any "recovery"-kind step, given
-    without an explicit pace or HR target automatically gets a pace
-    estimated from the user's recent running history (the slowest third of
-    their last 20 runs) - you don't need to look this up yourself for
-    those. It's worth a one-line mention in your reply so the user can
-    sanity-check the pace it picked. Skip all of this if the user already
-    gave a pace/HR target, asked for no target at all (e.g. a plain rest
-    step), or has told you in this conversation that they prefer HR-based
-    targets generally.
+    A "recovery"-kind step given without an explicit pace or HR target
+    automatically gets a pace estimated from the user's recent running
+    history (the slowest third of their last 20 runs) - you don't need to
+    look this up yourself for those. It's worth a one-line mention in your
+    reply so the user can sanity-check the pace it picked. Skip this if the
+    user already gave a pace/HR target, asked for no target at all (e.g. a
+    plain rest step), or has told you in this conversation that they prefer
+    HR-based targets generally.
 
     Before declining to create/schedule something because you believe it
     already exists (e.g. "already scheduled for that date"), re-check with
@@ -385,6 +408,7 @@ def create_running_workout(
     deleted things directly in Garmin Connect since then, outside this
     conversation.
     """
+    steps = _normalize_standalone_recovery_steps(steps)
     steps = _fill_easy_pace_defaults(steps)
     try:
         workout_json = build_running_workout(name, steps, description)
