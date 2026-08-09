@@ -341,40 +341,40 @@ def test_estimate_recovery_pace_returns_none_on_client_error(fake_client):
     assert server._estimate_recovery_pace_min_per_km() is None
 
 
-def test_fill_recovery_pace_defaults_fills_bare_recovery_step(monkeypatch):
+def test_fill_easy_pace_defaults_fills_bare_recovery_step(monkeypatch):
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
     steps = [{"kind": "recovery", "duration_seconds": 90}]
 
-    result = server._fill_recovery_pace_defaults(steps)
+    result = server._fill_easy_pace_defaults(steps)
 
     assert result == [
         {"kind": "recovery", "duration_seconds": 90, "target_pace_min_per_km": [5.25, 5.55]}
     ]
 
 
-def test_fill_recovery_pace_defaults_leaves_explicit_pace_target_alone(monkeypatch):
+def test_fill_easy_pace_defaults_leaves_explicit_pace_target_alone(monkeypatch):
     estimate = MagicMock(return_value=(5.25, 5.55))
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
     steps = [{"kind": "recovery", "duration_seconds": 90, "target_pace_min_per_km": [6.0, 6.2]}]
 
-    result = server._fill_recovery_pace_defaults(steps)
+    result = server._fill_easy_pace_defaults(steps)
 
     assert result == steps
     estimate.assert_not_called()
 
 
-def test_fill_recovery_pace_defaults_leaves_hr_target_alone(monkeypatch):
+def test_fill_easy_pace_defaults_leaves_hr_target_alone(monkeypatch):
     estimate = MagicMock(return_value=(5.25, 5.55))
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
     steps = [{"kind": "recovery", "duration_seconds": 90, "target_heart_rate_bpm": [125, 140]}]
 
-    result = server._fill_recovery_pace_defaults(steps)
+    result = server._fill_easy_pace_defaults(steps)
 
     assert result == steps
     estimate.assert_not_called()
 
 
-def test_fill_recovery_pace_defaults_recurses_into_repeat_blocks(monkeypatch):
+def test_fill_easy_pace_defaults_recurses_into_repeat_blocks(monkeypatch):
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
     steps = [
         {
@@ -387,13 +387,13 @@ def test_fill_recovery_pace_defaults_recurses_into_repeat_blocks(monkeypatch):
         }
     ]
 
-    result = server._fill_recovery_pace_defaults(steps)
+    result = server._fill_easy_pace_defaults(steps)
 
     assert result[0]["steps"][1]["target_pace_min_per_km"] == [5.25, 5.55]
     assert result[0]["steps"][0]["target_pace_min_per_km"] == [3.9, 4.1]
 
 
-def test_fill_recovery_pace_defaults_computes_estimate_at_most_once(monkeypatch):
+def test_fill_easy_pace_defaults_computes_estimate_at_most_once(monkeypatch):
     estimate = MagicMock(return_value=(5.25, 5.55))
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
     steps = [
@@ -401,18 +401,52 @@ def test_fill_recovery_pace_defaults_computes_estimate_at_most_once(monkeypatch)
         {"kind": "recovery", "duration_seconds": 90},
     ]
 
-    server._fill_recovery_pace_defaults(steps)
+    server._fill_easy_pace_defaults(steps)
 
     estimate.assert_called_once()
 
 
-def test_fill_recovery_pace_defaults_noop_when_estimate_unavailable(monkeypatch):
+def test_fill_easy_pace_defaults_noop_when_estimate_unavailable(monkeypatch):
     monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: None)
     steps = [{"kind": "recovery", "duration_seconds": 90}]
 
-    result = server._fill_recovery_pace_defaults(steps)
+    result = server._fill_easy_pace_defaults(steps)
 
     assert result == steps
+
+
+def test_fill_easy_pace_defaults_fills_standalone_easy_run_marked_by_effort(monkeypatch):
+    """A whole standalone easy run is a plain "interval" step (Garmin's own
+    "Run" step type), not a "recovery" one - it only gets the automatic
+    pace default when explicitly marked "effort": "easy"."""
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", lambda: (5.25, 5.55))
+    steps = [{"kind": "interval", "distance_meters": 5000, "effort": "easy"}]
+
+    result = server._fill_easy_pace_defaults(steps)
+
+    assert result == [
+        {
+            "kind": "interval",
+            "distance_meters": 5000,
+            "effort": "easy",
+            "target_pace_min_per_km": [5.25, 5.55],
+        }
+    ]
+
+
+def test_fill_easy_pace_defaults_leaves_untagged_interval_step_alone(monkeypatch):
+    """A hard interval (e.g. one rep of 5x400m at race pace) must never get
+    an easy-pace default just because it has no target yet at this point in
+    the tool's logic - only "recovery" kind or explicit "effort": "easy"
+    steps do."""
+    estimate = MagicMock(return_value=(5.25, 5.55))
+    monkeypatch.setattr(server, "_estimate_recovery_pace_min_per_km", estimate)
+    steps = [{"kind": "interval", "distance_meters": 400}]
+
+    result = server._fill_easy_pace_defaults(steps)
+
+    assert result == steps
+    estimate.assert_not_called()
 
 
 def test_create_running_workout_fills_recovery_pace_from_history(fake_client, monkeypatch):
