@@ -22,6 +22,19 @@ fi
 
 HOSTNAME_ARG="${1:?Usage: $0 <public-hostname> [git-ref]}"
 GIT_REF="${2:-main}"
+
+# Both are spliced into sed substitutions (hostname) or passed to git
+# (ref); reject anything outside a safe character set up front rather than
+# relying on downstream commands to handle unexpected input safely.
+if ! [[ "$HOSTNAME_ARG" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "Invalid hostname: $HOSTNAME_ARG" >&2
+  exit 1
+fi
+if ! [[ "$GIT_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  echo "Invalid git ref: $GIT_REF" >&2
+  exit 1
+fi
+
 REPO_URL="https://github.com/EndaMurr/IsMiseEanna.git"
 APP_DIR=/opt/ismiseeanna-mcp
 DATA_DIR=/var/lib/ismiseeanna-mcp
@@ -65,11 +78,11 @@ echo "==> Fetching application code (ref: $GIT_REF)"
 # another user unless it's marked safe first.
 git config --global --add safe.directory "$APP_DIR"
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" fetch origin "$GIT_REF"
-  git -C "$APP_DIR" checkout "$GIT_REF"
+  git -C "$APP_DIR" fetch origin -- "$GIT_REF"
+  git -C "$APP_DIR" checkout "$GIT_REF" --
   git -C "$APP_DIR" reset --hard "origin/$GIT_REF"
 else
-  git clone --branch "$GIT_REF" "$REPO_URL" "$APP_DIR"
+  git clone --branch "$GIT_REF" -- "$REPO_URL" "$APP_DIR"
 fi
 "$UV_BIN" --directory "$APP_DIR" sync --frozen --no-dev
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
