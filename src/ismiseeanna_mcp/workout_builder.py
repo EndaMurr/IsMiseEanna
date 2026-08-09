@@ -8,10 +8,22 @@ dependency). Two key strings are confirmed straight from that module's own
 helpers: ``"time"`` (``create_warmup_step``) and ``"iterations"``
 (``create_repeat_group``). The others (notably ``"distance"`` and
 ``"heart.rate.zone"``) aren't documented anywhere reachable from this
-sandbox, so they're inferred from Garmin's own naming pattern (e.g.
-``"speed.zone"``, ``"power.zone"`` are spelled out in that module's
-comments). Sanity-check a workout in the Garmin Connect app after the first
-real upload, and adjust here if a step doesn't render as expected.
+sandbox, so they're inferred from Garmin's own naming pattern.
+
+The pace target type is a confirmed exception, not an inference:
+``garminconnect.workout``'s own ``TargetType`` constants list 5 as
+``SPEED``/``speed.zone`` and (confusingly) 6 as ``OPEN``, but a real
+pace-targeted step saved through the Garmin Connect web UI and read back via
+``get_workout`` came back as ``workoutTargetTypeId: 6, workoutTargetTypeKey:
+"pace.zone"`` - using id 5/"speed.zone" instead silently renders as "No
+Target" in the UI despite the values being present. That same real example
+also confirmed value order: ``targetValueOne`` holds the *faster* pace's
+converted speed (the higher of the two, since speed and pace are inversely
+related) and ``targetValueTwo`` the slower pace's - reversed from what
+sorting the converted speeds ascending would give you.
+
+Sanity-check a workout in the Garmin Connect app after any change here that
+touches target values, and adjust if a step doesn't render as expected.
 """
 
 from __future__ import annotations
@@ -40,10 +52,10 @@ _HR_TARGET = {
     "workoutTargetTypeKey": "heart.rate.zone",
     "displayOrder": 4,
 }
-_SPEED_TARGET = {
-    "workoutTargetTypeId": 5,
-    "workoutTargetTypeKey": "speed.zone",
-    "displayOrder": 5,
+_PACE_TARGET = {
+    "workoutTargetTypeId": 6,
+    "workoutTargetTypeKey": "pace.zone",
+    "displayOrder": 6,
 }
 
 _TIME_CONDITION = {
@@ -172,8 +184,13 @@ def _target(step: dict) -> tuple[dict, float | None, float | None]:
             _bounded(p, "target_pace_min_per_km", _MIN_PACE_MIN_PER_KM, _MAX_PACE_MIN_PER_KM)
             for p in pace_range
         ]
-        low, high = sorted(pace_to_speed_mps(p) for p in paces)
-        return _SPEED_TARGET, low, high
+        # Sort by pace (fast, then slow), *then* convert to speed - not the
+        # other way around. Speed is inversely related to pace, so sorting
+        # the converted speeds would put the slow pace's (lower) speed in
+        # targetValueOne, which is backwards from what Garmin expects (see
+        # module docstring).
+        fast_pace, slow_pace = sorted(paces)
+        return _PACE_TARGET, pace_to_speed_mps(fast_pace), pace_to_speed_mps(slow_pace)
     if hr_range:
         if len(hr_range) != 2:
             raise WorkoutBuilderError("target_heart_rate_bpm needs exactly 2 values")
@@ -188,7 +205,7 @@ def _target(step: dict) -> tuple[dict, float | None, float | None]:
 
 def _build_executable_step(step: dict, step_order: int) -> dict:
     end_condition, end_value = _end_condition(step)
-    target_type, target_low, target_high = _target(step)
+    target_type, target_value_one, target_value_two = _target(step)
     result: dict[str, Any] = {
         "type": "ExecutableStepDTO",
         "stepOrder": step_order,
@@ -197,9 +214,9 @@ def _build_executable_step(step: dict, step_order: int) -> dict:
         "endConditionValue": end_value,
         "targetType": target_type,
     }
-    if target_low is not None:
-        result["targetValueOne"] = target_low
-        result["targetValueTwo"] = target_high
+    if target_value_one is not None:
+        result["targetValueOne"] = target_value_one
+        result["targetValueTwo"] = target_value_two
     if step.get("description"):
         result["description"] = step["description"]
     return result

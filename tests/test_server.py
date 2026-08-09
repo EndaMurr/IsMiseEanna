@@ -423,7 +423,7 @@ def test_create_running_workout_fills_recovery_pace_from_history(fake_client, mo
 
     (uploaded_json,), _ = fake_client.upload_workout.call_args
     built_step = uploaded_json["workoutSegments"][0]["workoutSteps"][0]
-    from ismiseeanna_mcp.workout_builder import _SPEED_TARGET
+    from ismiseeanna_mcp.workout_builder import _PACE_TARGET
 
-    assert built_step["targetType"] == _SPEED_TARGET
+    assert built_step["targetType"] == _PACE_TARGET
     assert built_step["targetValueOne"] is not None

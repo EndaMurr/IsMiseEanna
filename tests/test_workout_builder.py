@@ -109,7 +109,7 @@ def test_step_rejects_both_pace_and_heart_rate_targets():
         )
 
 
-def test_pace_target_step_uses_speed_zone_with_sorted_values():
+def test_pace_target_step_uses_pace_zone_with_fast_pace_first():
     workout = build_running_workout(
         "Intervals",
         [
@@ -124,10 +124,28 @@ def test_pace_target_step_uses_speed_zone_with_sorted_values():
     step = workout["workoutSegments"][0]["workoutSteps"][0]
     assert step["endCondition"]["conditionTypeKey"] == "distance"
     assert step["endConditionValue"] == 400
-    assert step["targetType"]["workoutTargetTypeKey"] == "speed.zone"
-    # slower pace (4.1) -> lower speed -> targetValueOne (low)
-    assert step["targetValueOne"] == pytest.approx(pace_to_speed_mps(4.1))
-    assert step["targetValueTwo"] == pytest.approx(pace_to_speed_mps(3.9))
+    assert step["targetType"]["workoutTargetTypeKey"] == "pace.zone"
+    # Confirmed against a real Garmin-saved pace step: targetValueOne holds
+    # the *faster* pace's (higher) speed, targetValueTwo the slower pace's.
+    assert step["targetValueOne"] == pytest.approx(pace_to_speed_mps(3.9))
+    assert step["targetValueTwo"] == pytest.approx(pace_to_speed_mps(4.1))
+
+
+def test_pace_target_step_orders_correctly_regardless_of_input_order():
+    workout = build_running_workout(
+        "Intervals",
+        [
+            {
+                "kind": "interval",
+                "distance_meters": 400,
+                # slow pace number listed first this time
+                "target_pace_min_per_km": [4.1, 3.9],
+            }
+        ],
+    )
+    step = workout["workoutSegments"][0]["workoutSteps"][0]
+    assert step["targetValueOne"] == pytest.approx(pace_to_speed_mps(3.9))
+    assert step["targetValueTwo"] == pytest.approx(pace_to_speed_mps(4.1))
 
 
 def test_heart_rate_target_step_sorts_low_and_high():
