@@ -6,11 +6,15 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.2.0",
-    "garminconnect>=0.2.20,<0.3",
+    "garminconnect[workout]>=0.3.0,<0.4",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "anthropic>=0.40.0",
 ]
 
 [project.scripts]
 ismiseeanna-mcp = "ismiseeanna_mcp.server:main"
+ismiseeanna-api = "ismiseeanna_mcp.api:main"
 
 [dependency-groups]
 dev = [

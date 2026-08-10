@@ -48,6 +48,13 @@ need the password.
 - `get_max_metrics(date)` — fitness age and VO2 max for one date
 - `get_race_predictions()` — predicted 5K/10K/half/marathon times as of today
 - `get_endurance_score(date)` — endurance score for one date
+- `list_workouts(start, limit)` — saved workouts
+- `get_workout(workout_id)` — full step-by-step definition for one saved workout
+- `create_running_workout(name, distance_meters, duration_seconds)` — create and save a simple single-step running workout (exactly one of distance/duration)
+- `schedule_workout(workout_id, date)` — schedule a saved workout on the Garmin calendar for one date
+- `list_scheduled_workouts(year, month)` — workouts scheduled on the Garmin calendar for one month
+- `unschedule_workout(scheduled_workout_id)` — remove a scheduled workout from the calendar
+- `delete_workout(workout_id)` — delete a saved workout
 
 ## Using with Claude Desktop / Claude Code
 
@@ -70,3 +77,28 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 
 Once a cached token exists at `~/.garminconnect`, the `env` block can be
 dropped.
+
+## Garmin UI mobile app backend
+
+`ismiseeanna-api` runs a small HTTP API that the companion Android app
+("Garmin UI") talks to. A phone can't speak this project's MCP stdio
+protocol directly, so this wraps the same Garmin functions behind HTTP and
+runs the chat's Claude tool-use loop server-side.
+
+```bash
+export GARMIN_UI_API_TOKEN="a long random shared secret"
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+uv run ismiseeanna-api   # serves on 0.0.0.0:8000
+```
+
+Every request needs `Authorization: Bearer $GARMIN_UI_API_TOKEN`.
+
+- `GET /status` — connection state, masked account, and which server is running
+- `GET /dashboard` — today + 7-day trend for Body Battery, Training Readiness, Sleep Score, resting HR, and HRV
+- `POST /chat` — `{"messages": [{"role": "user", "content": "..."}]}`, runs Claude (`claude-opus-5`) with the same tools listed above and returns `{"reply": "..."}`
+
+This binds to all interfaces so a phone on the same network/VPN can reach
+it — run it only on a trusted network (home LAN, Tailscale, etc.), never
+exposed directly to the internet. The dashboard's field extraction reads
+Garmin Connect's undocumented response shapes on a best-effort basis; spot
+check the numbers against the real Garmin Connect app after first setup.

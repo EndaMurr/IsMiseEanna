@@ -95,6 +95,34 @@ def test_get_client_wraps_login_failure(monkeypatch, tmp_path):
     assert "ValueError" in str(exc_info.value)
 
 
+def test_build_simple_running_workout_requires_exactly_one_target():
+    with pytest.raises(GarminClientError):
+        garmin_client.build_simple_running_workout("Run")
+    with pytest.raises(GarminClientError):
+        garmin_client.build_simple_running_workout(
+            "Run", distance_meters=5000, duration_seconds=1800
+        )
+
+
+def test_build_simple_running_workout_by_distance():
+    workout = garmin_client.build_simple_running_workout("Easy 5k", distance_meters=5000)
+
+    assert workout["workoutName"] == "Easy 5k"
+    assert workout["estimatedDurationInSecs"] == 1800
+    step = workout["workoutSegments"][0]["workoutSteps"][0]
+    assert step["endCondition"]["conditionTypeKey"] == "distance"
+    assert step["endConditionValue"] == 5000
+
+
+def test_build_simple_running_workout_by_duration():
+    workout = garmin_client.build_simple_running_workout("Easy run", duration_seconds=1800)
+
+    assert workout["estimatedDurationInSecs"] == 1800
+    step = workout["workoutSegments"][0]["workoutSteps"][0]
+    assert step["endCondition"]["conditionTypeKey"] == "time"
+    assert step["endConditionValue"] == 1800
+
+
 def test_get_client_secures_token_store_after_login(monkeypatch, tmp_path):
     token_store = tmp_path / "token.json"
     monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(token_store))

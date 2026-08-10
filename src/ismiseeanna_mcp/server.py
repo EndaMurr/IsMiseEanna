@@ -2,7 +2,7 @@
 
 from mcp.server.fastmcp import FastMCP
 
-from .garmin_client import get_client
+from .garmin_client import build_simple_running_workout, get_client
 
 mcp = FastMCP("ismiseeanna-garmin")
 
@@ -130,6 +130,59 @@ def get_race_predictions() -> dict:
 def get_endurance_score(date: str) -> dict:
     """Get endurance score for one date (YYYY-MM-DD)."""
     return get_client().get_endurance_score(date)
+
+
+@mcp.tool()
+def list_workouts(start: int = 0, limit: int = 100) -> list[dict]:
+    """List saved workouts."""
+    return get_client().get_workouts(start, limit)
+
+
+@mcp.tool()
+def get_workout(workout_id: int) -> dict:
+    """Get one saved workout's full step-by-step definition by its Garmin workout ID."""
+    return get_client().get_workout_by_id(workout_id)
+
+
+@mcp.tool()
+def create_running_workout(
+    name: str,
+    distance_meters: float | None = None,
+    duration_seconds: float | None = None,
+) -> dict:
+    """Create and save a simple single-step running workout.
+
+    Specify exactly one of distance_meters or duration_seconds. Returns the
+    saved workout, including its workoutId for use with schedule_workout.
+    """
+    workout_json = build_simple_running_workout(
+        name, distance_meters=distance_meters, duration_seconds=duration_seconds
+    )
+    return get_client().upload_workout(workout_json)
+
+
+@mcp.tool()
+def schedule_workout(workout_id: int, date: str) -> dict:
+    """Schedule a saved workout on the Garmin calendar for one date (YYYY-MM-DD)."""
+    return get_client().schedule_workout(workout_id, date)
+
+
+@mcp.tool()
+def list_scheduled_workouts(year: int, month: int) -> dict:
+    """List workouts scheduled on the Garmin calendar for one month."""
+    return get_client().get_scheduled_workouts(year, month)
+
+
+@mcp.tool()
+def unschedule_workout(scheduled_workout_id: int) -> dict:
+    """Remove a scheduled workout from the Garmin calendar."""
+    return get_client().unschedule_workout(scheduled_workout_id)
+
+
+@mcp.tool()
+def delete_workout(workout_id: int) -> dict:
+    """Delete a saved workout."""
+    return get_client().delete_workout(workout_id)
 
 
 def main() -> None:

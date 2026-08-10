@@ -80,3 +80,80 @@ def get_client() -> Garmin:
     _secure_token_store()
     _client = client
     return _client
+
+
+def build_simple_running_workout(
+    name: str,
+    *,
+    distance_meters: float | None = None,
+    duration_seconds: float | None = None,
+) -> dict:
+    """Build a minimal single-step running workout, by distance or by duration.
+
+    Exactly one of ``distance_meters``/``duration_seconds`` must be given; the
+    step carries no pace/HR target, just the end condition.
+    """
+    if (distance_meters is None) == (duration_seconds is None):
+        raise GarminClientError(
+            "Specify exactly one of distance_meters or duration_seconds."
+        )
+
+    from garminconnect.workout import (
+        ConditionType,
+        ExecutableStep,
+        RunningWorkout,
+        StepType,
+        TargetType,
+        WorkoutSegment,
+    )
+
+    no_target = {
+        "workoutTargetTypeId": TargetType.NO_TARGET,
+        "workoutTargetTypeKey": "no.target",
+        "displayOrder": 1,
+    }
+    interval_step_type = {
+        "stepTypeId": StepType.INTERVAL,
+        "stepTypeKey": "interval",
+        "displayOrder": 3,
+    }
+
+    if distance_meters is not None:
+        end_condition = {
+            "conditionTypeId": ConditionType.DISTANCE,
+            "conditionTypeKey": "distance",
+            "displayOrder": 2,
+            "displayable": True,
+        }
+        end_condition_value = distance_meters
+        # Garmin requires an estimated duration up front; ballpark it at an
+        # easy 6:00/km pace purely for display, it doesn't gate the workout.
+        estimated_duration = round(distance_meters / 1000 * 360)
+    else:
+        end_condition = {
+            "conditionTypeId": ConditionType.TIME,
+            "conditionTypeKey": "time",
+            "displayOrder": 2,
+            "displayable": True,
+        }
+        end_condition_value = duration_seconds
+        estimated_duration = round(duration_seconds)
+
+    step = ExecutableStep(
+        stepOrder=1,
+        stepType=interval_step_type,
+        endCondition=end_condition,
+        endConditionValue=end_condition_value,
+        targetType=no_target,
+    )
+    segment = WorkoutSegment(
+        segmentOrder=1,
+        sportType={"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1},
+        workoutSteps=[step],
+    )
+    workout = RunningWorkout(
+        workoutName=name,
+        estimatedDurationInSecs=estimated_duration,
+        workoutSegments=[segment],
+    )
+    return workout.to_dict()
