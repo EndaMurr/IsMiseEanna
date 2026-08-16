@@ -138,6 +138,20 @@ def test_race_week_shakeout_and_sharpener_always_precede_race_day(race_date):
     assert shakeout["date"] < sharpener["date"] < race_day["date"]
 
 
+def test_warmup_and_cooldown_legs_carry_an_easy_pace_target():
+    plan = _plan()
+    easy_pace = RACE_PREDICTIONS["timeMarathon"] / MARATHON_KM + 60
+    for week in plan:
+        for session in week["sessions"]:
+            if session["steps"] is None:
+                continue
+            for step in session["steps"]:
+                if step.get("kind") not in ("warmup", "cooldown"):
+                    continue
+                assert step["target_pace_min_per_km"] == round(easy_pace - 5)
+                assert step["target_pace_max_per_km"] == round(easy_pace + 5)
+
+
 def test_all_generated_steps_are_accepted_by_build_structured_running_workout():
     from ismiseeanna_mcp.garmin_client import build_structured_running_workout
 

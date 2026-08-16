@@ -88,7 +88,7 @@ def _interval_session(week_km: float, paces: dict) -> dict:
     return {
         "name": "Intervals",
         "steps": [
-            {"kind": "warmup", "distance_meters": 1500},
+            {"kind": "warmup", "distance_meters": 1500, **_pace_target(paces["easy"])},
             {
                 "repeat": {
                     "count": reps,
@@ -102,7 +102,7 @@ def _interval_session(week_km: float, paces: dict) -> dict:
                     ],
                 }
             },
-            {"kind": "cooldown", "distance_meters": 1000},
+            {"kind": "cooldown", "distance_meters": 1000, **_pace_target(paces["easy"])},
         ],
     }
 
@@ -112,13 +112,13 @@ def _tempo_session(week_km: float, paces: dict) -> dict:
     return {
         "name": "Tempo Run",
         "steps": [
-            {"kind": "warmup", "distance_meters": 1500},
+            {"kind": "warmup", "distance_meters": 1500, **_pace_target(paces["easy"])},
             {
                 "kind": "interval",
                 "distance_meters": round(tempo_km * 1000),
                 **_pace_target(paces["tempo"]),
             },
-            {"kind": "cooldown", "distance_meters": 1000},
+            {"kind": "cooldown", "distance_meters": 1000, **_pace_target(paces["easy"])},
         ],
     }
 
@@ -140,11 +140,11 @@ def _long_run_session(phase: str, week_km: float, paces: dict) -> dict:
                 "distance_meters": round(mp_km * 1000),
                 **_pace_target(paces["marathon"]),
             },
-            {"kind": "cooldown", "distance_meters": 500},
+            {"kind": "cooldown", "distance_meters": 500, **_pace_target(paces["easy"])},
         ]
     else:
         steps = [
-            {"kind": "warmup", "distance_meters": 500},
+            {"kind": "warmup", "distance_meters": 500, **_pace_target(paces["easy"])},
             {
                 "kind": "interval",
                 "distance_meters": round((total_km - 0.5) * 1000),
@@ -158,13 +158,13 @@ def _shakeout_session(paces: dict) -> dict:
     return {
         "name": "Race Week Shakeout",
         "steps": [
-            {"kind": "warmup", "distance_meters": 1000},
+            {"kind": "warmup", "distance_meters": 1000, **_pace_target(paces["easy"])},
             {
                 "kind": "interval",
                 "distance_meters": 3000,
                 **_pace_target(paces["easy"]),
             },
-            {"kind": "cooldown", "distance_meters": 500},
+            {"kind": "cooldown", "distance_meters": 500, **_pace_target(paces["easy"])},
         ],
     }
 
@@ -173,7 +173,7 @@ def _sharpener_session(paces: dict) -> dict:
     return {
         "name": "Pre-Race Sharpener",
         "steps": [
-            {"kind": "warmup", "distance_meters": 1000},
+            {"kind": "warmup", "distance_meters": 1000, **_pace_target(paces["easy"])},
             {
                 "repeat": {
                     "count": 4,
@@ -187,7 +187,7 @@ def _sharpener_session(paces: dict) -> dict:
                     ],
                 }
             },
-            {"kind": "cooldown", "distance_meters": 500},
+            {"kind": "cooldown", "distance_meters": 500, **_pace_target(paces["easy"])},
         ],
     }
 
