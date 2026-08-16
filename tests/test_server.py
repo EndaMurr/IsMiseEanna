@@ -166,6 +166,46 @@ def test_generate_marathon_plan_uses_real_race_predictions(fake_client, monkeypa
     assert result == [{"weekStart": "2026-08-17"}]
 
 
+def test_get_weekly_check_in_gathers_calendar_activity_and_recovery_data(
+    fake_client, monkeypatch
+):
+    import datetime as dt
+
+    from ismiseeanna_mcp import realignment as realignment_module
+
+    class _FixedDate(dt.date):
+        @classmethod
+        def today(cls):
+            return dt.date(2026, 8, 16)  # Sunday -> week is Mon 08-10..Sun 08-16
+
+    monkeypatch.setattr(realignment_module, "date", _FixedDate)
+
+    fake_client.get_scheduled_workouts.return_value = {
+        "calendarItems": [
+            {"date": "2026-08-11", "title": "Tempo Run"},
+            {"date": "2026-08-09", "title": "Previous week, must be excluded"},
+        ]
+    }
+    fake_client.get_activities_by_date.return_value = [
+        {"activityId": 1, "activityName": "Tempo", "startTimeLocal": "2026-08-11 07:00:00"}
+    ]
+    fake_client.get_training_readiness.return_value = [{"score": 65}]
+    fake_client.get_hrv_data.return_value = {"hrvSummary": {"lastNightAvg": 55}}
+
+    result = server.get_weekly_check_in()
+
+    fake_client.get_scheduled_workouts.assert_called_once_with(2026, 8)
+    fake_client.get_activities_by_date.assert_called_once_with(
+        "2026-08-10", "2026-08-16", "running"
+    )
+    assert result["weekStart"] == "2026-08-10"
+    assert result["weekEnd"] == "2026-08-16"
+    assert result["recoveryTrend"]["trainingReadiness"] == [65] * 7
+    assert result["recoveryTrend"]["hrv"] == [55] * 7
+    assert result["sessionsCompleted"] == [{"date": "2026-08-11", "name": "Tempo Run"}]
+    assert result["sessionsMissed"] == []
+
+
 def test_create_running_workout_uploads_built_workout(fake_client):
     fake_client.upload_workout.return_value = {"workoutId": 42}
 

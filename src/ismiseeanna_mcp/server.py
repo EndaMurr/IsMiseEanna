@@ -2,8 +2,15 @@
 
 from mcp.server.fastmcp import FastMCP
 
-from .garmin_client import build_structured_running_workout, get_client
+from .garmin_client import (
+    _extract_hrv,
+    _extract_training_readiness,
+    _n_day_trend,
+    build_structured_running_workout,
+    get_client,
+)
 from .plan_generator import generate_marathon_plan as _generate_marathon_plan
+from .realignment import _week_range, build_weekly_check_in
 
 mcp = FastMCP("ismiseeanna-garmin")
 
@@ -153,6 +160,53 @@ def generate_marathon_plan(
     """
     race_predictions = get_client().get_race_predictions()
     return _generate_marathon_plan(race_date, current_weekly_km, race_predictions, strategy)
+
+
+@mcp.tool()
+def get_weekly_check_in() -> dict:
+    """Compare this week's scheduled Garmin-calendar sessions against what you
+    actually completed, plus the recent training-readiness/HRV trend.
+
+    Read-only: this never touches the calendar, so it's safe to run alongside
+    any plan already scheduled there (Runna's or otherwise) — it doesn't
+    matter which app put a session on the calendar, only whether an activity
+    shows up near that date. Returns data to interpret, not a canned
+    recommendation: sessionsMissed, and whether readiness or HRV has been
+    sustained-suppressed for the last few days, are worth reading together
+    with what's actually on the plan for the coming week.
+
+    NOTE: calendar-item field names ("date"/"title") are a best-effort
+    reading of Garmin's undocumented calendar response; if scheduled-session
+    names or dates look wrong, verify against the real Garmin Connect app.
+    """
+    client = get_client()
+    week_start, week_end = _week_range()
+
+    months = {(week_start.year, week_start.month), (week_end.year, week_end.month)}
+    calendar_items = []
+    for year, month in months:
+        response = client.get_scheduled_workouts(year, month)
+        calendar_items.extend((response or {}).get("calendarItems") or [])
+
+    scheduled = [
+        {"date": item.get("date"), "name": item.get("title") or item.get("workoutName")}
+        for item in calendar_items
+        if item.get("date")
+    ]
+
+    activities = client.get_activities_by_date(
+        week_start.isoformat(), week_end.isoformat(), "running"
+    )
+    completed = [_summarize(a) for a in activities]
+
+    recovery_trend = {
+        "trainingReadiness": _n_day_trend(
+            client.get_training_readiness, _extract_training_readiness
+        ),
+        "hrv": _n_day_trend(client.get_hrv_data, _extract_hrv),
+    }
+
+    return build_weekly_check_in(scheduled, completed, recovery_trend)
 
 
 @mcp.tool()

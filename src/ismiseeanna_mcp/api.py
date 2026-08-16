@@ -10,7 +10,6 @@ import inspect
 import json
 import os
 import typing
-from datetime import date, timedelta
 from typing import Any
 
 import anthropic
@@ -19,7 +18,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from . import server as garmin_tools
-from .garmin_client import GarminClientError, get_client
+from .garmin_client import (
+    GarminClientError,
+    _extract_body_battery,
+    _extract_hrv,
+    _extract_resting_heart_rate,
+    _extract_sleep_score,
+    _extract_training_readiness,
+    _n_day_trend,
+    get_client,
+)
 
 app = FastAPI(title="Garmin UI API")
 security = HTTPBearer()
@@ -62,71 +70,19 @@ def get_status(_: None = Depends(require_auth)) -> dict:
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
-#
-# NOTE: garminconnect passes through Garmin Connect's own undocumented,
-# reverse-engineered API responses verbatim. The field paths below are a
-# best-effort reading of that shape; they haven't been verified against a
-# live account in this environment. Spot-check the extracted values against
-# the real Garmin Connect app before trusting the dashboard numbers, and
-# adjust these extractors if a field path turns out to be wrong.
-
-
-def _extract_body_battery(day_data: Any) -> float | None:
-    entry = (day_data or [None])[0] if isinstance(day_data, list) else day_data
-    if not entry:
-        return None
-    samples = entry.get("bodyBatteryValuesArray") or []
-    if samples:
-        return samples[-1][1]
-    return entry.get("charged")
-
-
-def _extract_training_readiness(day_data: Any) -> float | None:
-    entry = (day_data or [None])[0] if isinstance(day_data, list) else day_data
-    return (entry or {}).get("score")
-
-
-def _extract_sleep_score(day_data: Any) -> float | None:
-    dto = (day_data or {}).get("dailySleepDTO") or {}
-    scores = dto.get("sleepScores") or {}
-    overall = scores.get("overall") or {}
-    return overall.get("value")
-
-
-def _extract_resting_heart_rate(day_data: Any) -> float | None:
-    metrics_map = ((day_data or {}).get("allMetrics") or {}).get("metricsMap") or {}
-    entries = metrics_map.get("WELLNESS_RESTING_HEART_RATE") or []
-    return entries[-1]["value"] if entries else None
-
-
-def _extract_hrv(day_data: Any) -> float | None:
-    summary = (day_data or {}).get("hrvSummary") or {}
-    return summary.get("lastNightAvg")
-
-
-def _seven_day_trend(fetch_day, extract) -> list[float | None]:
-    today = date.today()
-    values = []
-    for i in range(6, -1, -1):
-        day_str = (today - timedelta(days=i)).isoformat()
-        try:
-            values.append(extract(fetch_day(day_str)))
-        except Exception:
-            values.append(None)
-    return values
 
 
 @app.get("/dashboard")
 def get_dashboard(_: None = Depends(require_auth)) -> dict:
     client = get_client()
 
-    body_battery = _seven_day_trend(client.get_body_battery, _extract_body_battery)
-    training_readiness = _seven_day_trend(
+    body_battery = _n_day_trend(client.get_body_battery, _extract_body_battery)
+    training_readiness = _n_day_trend(
         client.get_training_readiness, _extract_training_readiness
     )
-    sleep_score = _seven_day_trend(client.get_sleep_data, _extract_sleep_score)
-    resting_hr = _seven_day_trend(client.get_rhr_day, _extract_resting_heart_rate)
-    hrv = _seven_day_trend(client.get_hrv_data, _extract_hrv)
+    sleep_score = _n_day_trend(client.get_sleep_data, _extract_sleep_score)
+    resting_hr = _n_day_trend(client.get_rhr_day, _extract_resting_heart_rate)
+    hrv = _n_day_trend(client.get_hrv_data, _extract_hrv)
 
     return {
         "today": {
@@ -170,6 +126,7 @@ _EXPOSED_TOOLS = [
     garmin_tools.get_race_predictions,
     garmin_tools.get_endurance_score,
     garmin_tools.generate_marathon_plan,
+    garmin_tools.get_weekly_check_in,
     garmin_tools.list_workouts,
     garmin_tools.get_workout,
     garmin_tools.create_running_workout,

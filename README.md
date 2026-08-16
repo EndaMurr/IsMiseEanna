@@ -49,6 +49,7 @@ need the password.
 - `get_race_predictions()` — predicted 5K/10K/half/marathon times as of today
 - `get_endurance_score(date)` — endurance score for one date
 - `generate_marathon_plan(race_date, current_weekly_km, strategy)` — preview a periodized marathon plan (paces derived from `get_race_predictions`); returns weeks of sessions to review, doesn't create or schedule anything
+- `get_weekly_check_in()` — compares this week's scheduled Garmin-calendar sessions (from any app — Runna, ismiseeanna, or manual) against completed activities, plus the recent training-readiness/HRV trend; read-only, returns data rather than a recommendation
 - `list_workouts(start, limit)` — saved workouts
 - `get_workout(workout_id)` — full step-by-step definition for one saved workout
 - `create_running_workout(name, steps)` — create and save a multi-step running workout (warmup/interval/recovery/cooldown steps, each with an end condition and an optional pace-zone or heart-rate-zone target, with one level of repeated interval blocks)
