@@ -153,3 +153,16 @@ def test_run_tool_reports_unknown_tool():
 def test_chat_tools_have_descriptions():
     for tool in api.CHAT_TOOLS:
         assert tool["description"], f"{tool['name']} is missing a description"
+
+
+def test_create_running_workout_schema_types_steps_as_object_array():
+    schema = next(t for t in api.CHAT_TOOLS if t["name"] == "create_running_workout")
+    steps_schema = schema["input_schema"]["properties"]["steps"]
+    assert steps_schema == {"type": "array", "items": {"type": "object"}}
+    assert schema["input_schema"]["required"] == ["name", "steps"]
+
+
+def test_param_schema_handles_list_and_dict_annotations():
+    assert api._param_schema(list[dict]) == {"type": "array", "items": {"type": "object"}}
+    assert api._param_schema(dict) == {"type": "object"}
+    assert api._param_schema(str | None) == {"type": "string"}

@@ -50,7 +50,7 @@ need the password.
 - `get_endurance_score(date)` — endurance score for one date
 - `list_workouts(start, limit)` — saved workouts
 - `get_workout(workout_id)` — full step-by-step definition for one saved workout
-- `create_running_workout(name, distance_meters, duration_seconds)` — create and save a simple single-step running workout (exactly one of distance/duration)
+- `create_running_workout(name, steps)` — create and save a multi-step running workout (warmup/interval/recovery/cooldown steps, each with an end condition and an optional pace-zone or heart-rate-zone target, with one level of repeated interval blocks)
 - `schedule_workout(workout_id, date)` — schedule a saved workout on the Garmin calendar for one date
 - `list_scheduled_workouts(year, month)` — workouts scheduled on the Garmin calendar for one month
 - `unschedule_workout(scheduled_workout_id)` — remove a scheduled workout from the calendar

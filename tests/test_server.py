@@ -142,7 +142,9 @@ def test_workout_passthrough_tool_calls_expected_client_method(
 def test_create_running_workout_uploads_built_workout(fake_client):
     fake_client.upload_workout.return_value = {"workoutId": 42}
 
-    result = server.create_running_workout("Easy 5k", distance_meters=5000)
+    result = server.create_running_workout(
+        "Easy 5k", [{"kind": "warmup", "distance_meters": 5000}]
+    )
 
     fake_client.upload_workout.assert_called_once()
     uploaded = fake_client.upload_workout.call_args[0][0]

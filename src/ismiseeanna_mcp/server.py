@@ -2,7 +2,7 @@
 
 from mcp.server.fastmcp import FastMCP
 
-from .garmin_client import build_simple_running_workout, get_client
+from .garmin_client import build_structured_running_workout, get_client
 
 mcp = FastMCP("ismiseeanna-garmin")
 
@@ -145,19 +145,39 @@ def get_workout(workout_id: int) -> dict:
 
 
 @mcp.tool()
-def create_running_workout(
-    name: str,
-    distance_meters: float | None = None,
-    duration_seconds: float | None = None,
-) -> dict:
-    """Create and save a simple single-step running workout.
+def create_running_workout(name: str, steps: list[dict]) -> dict:
+    """Create and save a multi-step running workout: warmup/interval/recovery/cooldown
+    steps, each with an end condition and an optional pace or heart-rate target.
 
-    Specify exactly one of distance_meters or duration_seconds. Returns the
-    saved workout, including its workoutId for use with schedule_workout.
+    Each entry in `steps` is either a plain step or a repeat block:
+
+    Plain step:
+      - "kind": one of "warmup", "interval", "recovery", "cooldown" (required)
+      - exactly one of "distance_meters" or "duration_seconds" (required)
+      - at most one target, both bounds required together:
+          "target_pace_min_per_km" / "target_pace_max_per_km" (seconds per km), or
+          "target_hr_min" / "target_hr_max" (bpm)
+        omit both for no target.
+
+    Repeat block: {"repeat": {"count": int, "steps": [plain step, ...]}}
+      — repeats the nested plain steps `count` times, e.g. 6x 400m @ pace with
+      200m recovery jog between reps. Nested repeats are not supported.
+
+    Example — an easy warmup, 4x(3min hard / 2min easy), and a cooldown:
+      [
+        {"kind": "warmup", "distance_meters": 1000},
+        {"repeat": {"count": 4, "steps": [
+          {"kind": "interval", "duration_seconds": 180,
+           "target_pace_min_per_km": 240, "target_pace_max_per_km": 255},
+          {"kind": "recovery", "duration_seconds": 120}
+        ]}},
+        {"kind": "cooldown", "distance_meters": 1000}
+      ]
+
+    Returns the saved workout, including its workoutId for use with
+    schedule_workout.
     """
-    workout_json = build_simple_running_workout(
-        name, distance_meters=distance_meters, duration_seconds=duration_seconds
-    )
+    workout_json = build_structured_running_workout(name, steps)
     return get_client().upload_workout(workout_json)
 
 

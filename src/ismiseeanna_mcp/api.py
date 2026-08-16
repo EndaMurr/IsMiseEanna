@@ -181,23 +181,32 @@ _EXPOSED_TOOLS = [
 _TOOLS_BY_NAME = {f.__name__: f for f in _EXPOSED_TOOLS}
 
 
-def _json_type(annotation: Any) -> str:
+def _param_schema(annotation: Any) -> dict:
     if annotation is int:
-        return "integer"
+        return {"type": "integer"}
     if annotation is float:
-        return "number"
-    if typing.get_origin(annotation) is typing.Union:
+        return {"type": "number"}
+    if annotation is bool:
+        return {"type": "boolean"}
+    if annotation is dict:
+        return {"type": "object"}
+    origin = typing.get_origin(annotation)
+    if origin is list:
+        item_args = typing.get_args(annotation)
+        item_type = item_args[0] if item_args else str
+        return {"type": "array", "items": _param_schema(item_type)}
+    if origin is typing.Union:
         real_args = [a for a in typing.get_args(annotation) if a is not type(None)]
         if real_args:
-            return _json_type(real_args[0])
-    return "string"
+            return _param_schema(real_args[0])
+    return {"type": "string"}
 
 
 def _tool_schema(func) -> dict:
     properties = {}
     required = []
     for name, param in inspect.signature(func).parameters.items():
-        properties[name] = {"type": _json_type(param.annotation)}
+        properties[name] = _param_schema(param.annotation)
         if param.default is inspect.Parameter.empty:
             required.append(name)
     return {
