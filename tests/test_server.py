@@ -114,3 +114,39 @@ def test_passthrough_tool_calls_expected_client_method(fake_client, tool_func, c
 
     getattr(fake_client, client_method).assert_called_once_with(*args)
     assert result is sentinel
+
+
+@pytest.mark.parametrize(
+    "tool_func, client_method, args",
+    [
+        (server.list_workouts, "get_workouts", (0, 100)),
+        (server.get_workout, "get_workout_by_id", (7,)),
+        (server.schedule_workout, "schedule_workout", (7, "2026-08-11")),
+        (server.list_scheduled_workouts, "get_scheduled_workouts", (2026, 8)),
+        (server.unschedule_workout, "unschedule_workout", (99,)),
+        (server.delete_workout, "delete_workout", (7,)),
+    ],
+)
+def test_workout_passthrough_tool_calls_expected_client_method(
+    fake_client, tool_func, client_method, args
+):
+    sentinel = {"sentinel": True}
+    getattr(fake_client, client_method).return_value = sentinel
+
+    result = tool_func(*args)
+
+    getattr(fake_client, client_method).assert_called_once_with(*args)
+    assert result is sentinel
+
+
+def test_create_running_workout_uploads_built_workout(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 42}
+
+    result = server.create_running_workout(
+        "Easy 5k", [{"kind": "warmup", "distance_meters": 5000}]
+    )
+
+    fake_client.upload_workout.assert_called_once()
+    uploaded = fake_client.upload_workout.call_args[0][0]
+    assert uploaded["workoutName"] == "Easy 5k"
+    assert result == {"workoutId": 42}
