@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
 from ismiseeanna_mcp import plan_generator
+from ismiseeanna_mcp.garmin_client import GarminClientError
 from ismiseeanna_mcp.plan_generator import MARATHON_KM, generate_marathon_plan
 
 RACE_PREDICTIONS = {
@@ -23,13 +24,24 @@ def _plan(**kwargs):
 
 
 def test_rejects_race_date_in_the_past():
-    with pytest.raises(ValueError, match="future"):
+    with pytest.raises(GarminClientError, match="future"):
         generate_marathon_plan("2020-01-01", 50.0, RACE_PREDICTIONS, today=TODAY)
 
 
+def test_rejects_malformed_race_date():
+    with pytest.raises(GarminClientError, match="ISO date"):
+        generate_marathon_plan("not-a-date", 50.0, RACE_PREDICTIONS, today=TODAY)
+
+
 def test_rejects_unknown_strategy():
-    with pytest.raises(ValueError, match="strategy"):
+    with pytest.raises(GarminClientError, match="strategy"):
         _plan(strategy="yolo")
+
+
+def test_rejects_incomplete_race_predictions():
+    incomplete = dict(RACE_PREDICTIONS, timeMarathon=None)
+    with pytest.raises(GarminClientError, match="timeMarathon"):
+        generate_marathon_plan(RACE_DATE, 50.0, incomplete, today=TODAY)
 
 
 def test_plan_spans_from_next_monday_through_race_week():
@@ -80,8 +92,6 @@ def test_non_race_weeks_have_three_sessions_on_tue_thu_sat():
         assert names == ["Intervals", "Tempo Run", "Long Run"]
         for session, offset in zip(week["sessions"], (1, 3, 5)):
             expected_date = date.fromisoformat(week["weekStart"])
-            from datetime import timedelta
-
             assert session["date"] == (expected_date + timedelta(days=offset)).isoformat()
 
 
@@ -116,6 +126,30 @@ def test_interval_session_uses_repeat_block_at_interval_pace():
     interval_pace = RACE_PREDICTIONS["time10K"] / 10
     assert rep_step["target_pace_min_per_km"] == round(interval_pace - 5)
     assert rep_step["target_pace_max_per_km"] == round(interval_pace + 5)
+
+
+@pytest.mark.parametrize("race_date", ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"])
+def test_race_week_shakeout_and_sharpener_always_precede_race_day(race_date):
+    # 2026-10-05..08 are Mon/Tue/Wed/Thu — the days the old fixed Tue/Thu
+    # offsets could land on or after race day instead of before it.
+    plan = generate_marathon_plan(race_date, 50.0, RACE_PREDICTIONS, today=TODAY)
+    race_week = plan[-1]
+    shakeout, sharpener, race_day = race_week["sessions"]
+    assert shakeout["date"] < sharpener["date"] < race_day["date"]
+
+
+def test_warmup_and_cooldown_legs_carry_an_easy_pace_target():
+    plan = _plan()
+    easy_pace = RACE_PREDICTIONS["timeMarathon"] / MARATHON_KM + 60
+    for week in plan:
+        for session in week["sessions"]:
+            if session["steps"] is None:
+                continue
+            for step in session["steps"]:
+                if step.get("kind") not in ("warmup", "cooldown"):
+                    continue
+                assert step["target_pace_min_per_km"] == round(easy_pace - 5)
+                assert step["target_pace_max_per_km"] == round(easy_pace + 5)
 
 
 def test_all_generated_steps_are_accepted_by_build_structured_running_workout():
