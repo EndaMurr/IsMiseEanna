@@ -3,6 +3,7 @@
 from mcp.server.fastmcp import FastMCP
 
 from .garmin_client import build_structured_running_workout, get_client
+from .plan_generator import generate_marathon_plan as _generate_marathon_plan
 
 mcp = FastMCP("ismiseeanna-garmin")
 
@@ -130,6 +131,28 @@ def get_race_predictions() -> dict:
 def get_endurance_score(date: str) -> dict:
     """Get endurance score for one date (YYYY-MM-DD)."""
     return get_client().get_endurance_score(date)
+
+
+@mcp.tool()
+def generate_marathon_plan(
+    race_date: str, current_weekly_km: float, strategy: str = "aggressive"
+) -> list[dict]:
+    """Generate a periodized marathon training plan from today through race day.
+
+    Uses the user's own Garmin race-time predictions to set training paces
+    (no guessed numbers). Returns a preview only — nothing is created or
+    scheduled on the Garmin calendar; each session's "steps" can be passed
+    to create_running_workout and the result's workoutId to schedule_workout
+    once the plan has been reviewed.
+
+    - "race_date": YYYY-MM-DD, must be in the future
+    - "current_weekly_km": recent typical (not peak) weekly running volume
+    - "strategy": "aggressive" (ramp toward ~120% of current volume) or
+      "conservative" (hold near current volume); weekly growth during the
+      build phase is capped at +10%/week either way
+    """
+    race_predictions = get_client().get_race_predictions()
+    return _generate_marathon_plan(race_date, current_weekly_km, race_predictions, strategy)
 
 
 @mcp.tool()

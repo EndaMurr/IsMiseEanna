@@ -139,6 +139,33 @@ def test_workout_passthrough_tool_calls_expected_client_method(
     assert result is sentinel
 
 
+def test_generate_marathon_plan_uses_real_race_predictions(fake_client, monkeypatch):
+    fake_client.get_race_predictions.return_value = {
+        "time5K": 1200,
+        "time10K": 2500,
+        "timeHalfMarathon": 5500,
+        "timeMarathon": 12000,
+    }
+    captured = {}
+
+    def fake_generate(race_date, current_weekly_km, race_predictions, strategy):
+        captured["args"] = (race_date, current_weekly_km, race_predictions, strategy)
+        return [{"weekStart": "2026-08-17"}]
+
+    monkeypatch.setattr(server, "_generate_marathon_plan", fake_generate)
+
+    result = server.generate_marathon_plan("2026-10-03", 55.0, "aggressive")
+
+    fake_client.get_race_predictions.assert_called_once()
+    assert captured["args"] == (
+        "2026-10-03",
+        55.0,
+        fake_client.get_race_predictions.return_value,
+        "aggressive",
+    )
+    assert result == [{"weekStart": "2026-08-17"}]
+
+
 def test_create_running_workout_uploads_built_workout(fake_client):
     fake_client.upload_workout.return_value = {"workoutId": 42}
 
