@@ -9,6 +9,8 @@ translation step.
 
 from datetime import date, timedelta
 
+from .garmin_client import GarminClientError
+
 _LONG_RUN_CAP_KM = 32.0
 _MAX_WEEKLY_INCREASE = 1.10  # cap week-over-week volume growth during the build phase
 
@@ -18,13 +20,22 @@ _SESSION_DAY_OFFSETS = {"interval": 1, "tempo": 3, "long": 5}  # Tue, Thu, Sat
 _STRATEGY_PEAK_MULTIPLIER = {"aggressive": 1.20, "conservative": 1.00}
 
 MARATHON_KM = 42.195
+HALF_MARATHON_KM = 21.0975
+
+_REQUIRED_PREDICTION_FIELDS = ("timeMarathon", "timeHalfMarathon", "time10K")
 
 
 def _paces_from_predictions(race_predictions: dict) -> dict:
     """Derive training paces (seconds/km) from Garmin's predicted race times."""
+    missing = [f for f in _REQUIRED_PREDICTION_FIELDS if not race_predictions.get(f)]
+    if missing:
+        raise GarminClientError(
+            f"Garmin's race predictions are missing {', '.join(missing)} — usually "
+            "means there isn't enough running history yet for a reliable prediction."
+        )
     return {
         "marathon": race_predictions["timeMarathon"] / MARATHON_KM,
-        "tempo": race_predictions["timeHalfMarathon"] / 21.0975,
+        "tempo": race_predictions["timeHalfMarathon"] / HALF_MARATHON_KM,
         "interval": race_predictions["time10K"] / 10,
         "easy": race_predictions["timeMarathon"] / MARATHON_KM + 60,
     }
@@ -204,11 +215,16 @@ def generate_marathon_plan(
     ``garmin_client.build_structured_running_workout``'s step format.
     """
     today = today or date.today()
-    race = date.fromisoformat(race_date)
+    try:
+        race = date.fromisoformat(race_date)
+    except (TypeError, ValueError) as e:
+        raise GarminClientError(
+            f"race_date must be an ISO date (YYYY-MM-DD), got {race_date!r}."
+        ) from e
     if race <= today:
-        raise ValueError("race_date must be in the future.")
+        raise GarminClientError("race_date must be in the future.")
     if strategy not in _STRATEGY_PEAK_MULTIPLIER:
-        raise ValueError(f"strategy must be one of {sorted(_STRATEGY_PEAK_MULTIPLIER)}.")
+        raise GarminClientError(f"strategy must be one of {sorted(_STRATEGY_PEAK_MULTIPLIER)}.")
 
     paces = _paces_from_predictions(race_predictions)
     weeks = _week_mondays(today, race)
@@ -222,9 +238,18 @@ def generate_marathon_plan(
         if phase == "race":
             shakeout = _shakeout_session(paces)
             sharpener = _sharpener_session(paces)
+            # Anchored to race day's own weekday (not a fixed Tue/Thu) so both
+            # sessions always fall before race day, whatever day it lands on.
+            race_offset = race.weekday()
             sessions = [
-                {"date": (monday + timedelta(days=1)).isoformat(), **shakeout},
-                {"date": (monday + timedelta(days=3)).isoformat(), **sharpener},
+                {
+                    "date": (monday + timedelta(days=race_offset - 4)).isoformat(),
+                    **shakeout,
+                },
+                {
+                    "date": (monday + timedelta(days=race_offset - 2)).isoformat(),
+                    **sharpener,
+                },
                 {"date": race.isoformat(), "name": "Marathon (Race Day)", "steps": None},
             ]
             week_km = round(3.0 + 1.6 + MARATHON_KM, 1)
