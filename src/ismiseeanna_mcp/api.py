@@ -169,6 +169,7 @@ _EXPOSED_TOOLS = [
     garmin_tools.get_max_metrics,
     garmin_tools.get_race_predictions,
     garmin_tools.get_endurance_score,
+    garmin_tools.generate_marathon_plan,
     garmin_tools.list_workouts,
     garmin_tools.get_workout,
     garmin_tools.create_running_workout,

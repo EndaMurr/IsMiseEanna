@@ -48,6 +48,7 @@ need the password.
 - `get_max_metrics(date)` — fitness age and VO2 max for one date
 - `get_race_predictions()` — predicted 5K/10K/half/marathon times as of today
 - `get_endurance_score(date)` — endurance score for one date
+- `generate_marathon_plan(race_date, current_weekly_km, strategy)` — preview a periodized marathon plan (paces derived from `get_race_predictions`); returns weeks of sessions to review, doesn't create or schedule anything
 - `list_workouts(start, limit)` — saved workouts
 - `get_workout(workout_id)` — full step-by-step definition for one saved workout
 - `create_running_workout(name, steps)` — create and save a multi-step running workout (warmup/interval/recovery/cooldown steps, each with an end condition and an optional pace-zone or heart-rate-zone target, with one level of repeated interval blocks)
