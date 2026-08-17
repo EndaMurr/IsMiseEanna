@@ -75,13 +75,27 @@ def test_build_weekly_check_in_matches_completed_within_tolerance():
 
 
 def test_build_weekly_check_in_flags_missed_session_outside_tolerance():
-    scheduled = [_scheduled("2026-08-12", "Tempo Run")]
-    completed = [_activity("2026-08-15")]  # 3 days off
+    scheduled = [_scheduled("2026-08-11", "Tempo Run")]  # yesterday relative to TODAY
+    completed = [_activity("2026-08-15")]  # 4 days off, well outside tolerance
 
     result = build_weekly_check_in(scheduled, completed, {}, today=TODAY)
 
-    assert result["sessionsMissed"] == [{"date": "2026-08-12", "name": "Tempo Run"}]
+    assert result["sessionsMissed"] == [{"date": "2026-08-11", "name": "Tempo Run"}]
     assert result["sessionsCompleted"] == []
+    assert result["sessionsUpcoming"] == []
+
+
+def test_build_weekly_check_in_does_not_flag_future_sessions_as_missed():
+    scheduled = [
+        _scheduled("2026-08-11", "Yesterday's Run"),  # past, uncompleted -> missed
+        _scheduled("2026-08-12", "Today's Run"),  # today, uncompleted -> upcoming
+        _scheduled("2026-08-14", "Friday's Run"),  # future -> upcoming
+    ]
+
+    result = build_weekly_check_in(scheduled, [], {}, today=TODAY)
+
+    assert [s["name"] for s in result["sessionsMissed"]] == ["Yesterday's Run"]
+    assert [s["name"] for s in result["sessionsUpcoming"]] == ["Today's Run", "Friday's Run"]
 
 
 def test_build_weekly_check_in_surfaces_recovery_suppression_flags():
