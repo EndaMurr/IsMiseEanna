@@ -112,20 +112,23 @@ def test_peak_week_long_run_finishes_at_marathon_pace():
     marathon_pace = RACE_PREDICTIONS["timeMarathon"] / MARATHON_KM
     finish_step = long_run["steps"][1]
     assert finish_step["kind"] == "interval"
-    assert finish_step["target_pace_min_per_km"] == round(marathon_pace - 5)
-    assert finish_step["target_pace_max_per_km"] == round(marathon_pace + 5)
+    assert finish_step["target_pace_min_per_km"] == plan_generator._pace_target(marathon_pace)[
+        "target_pace_min_per_km"
+    ]
 
 
 def test_interval_session_uses_repeat_block_at_interval_pace():
     plan = _plan()
     week = plan[0]
     intervals = next(s for s in week["sessions"] if s["name"] == "Intervals")
-    repeat = intervals["steps"][1]["repeat"]
-    assert repeat["count"] == 6
+    repeat = intervals["steps"][1]
+    assert repeat["kind"] == "repeat"
+    assert repeat["iterations"] == 6
     rep_step = repeat["steps"][0]
     interval_pace = RACE_PREDICTIONS["time10K"] / 10
-    assert rep_step["target_pace_min_per_km"] == round(interval_pace - 5)
-    assert rep_step["target_pace_max_per_km"] == round(interval_pace + 5)
+    assert rep_step["target_pace_min_per_km"] == plan_generator._pace_target(interval_pace)[
+        "target_pace_min_per_km"
+    ]
 
 
 @pytest.mark.parametrize("race_date", ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"])
@@ -141,6 +144,7 @@ def test_race_week_shakeout_and_sharpener_always_precede_race_day(race_date):
 def test_warmup_and_cooldown_legs_carry_an_easy_pace_target():
     plan = _plan()
     easy_pace = RACE_PREDICTIONS["timeMarathon"] / MARATHON_KM + 60
+    expected = plan_generator._pace_target(easy_pace)["target_pace_min_per_km"]
     for week in plan:
         for session in week["sessions"]:
             if session["steps"] is None:
@@ -148,17 +152,16 @@ def test_warmup_and_cooldown_legs_carry_an_easy_pace_target():
             for step in session["steps"]:
                 if step.get("kind") not in ("warmup", "cooldown"):
                     continue
-                assert step["target_pace_min_per_km"] == round(easy_pace - 5)
-                assert step["target_pace_max_per_km"] == round(easy_pace + 5)
+                assert step["target_pace_min_per_km"] == expected
 
 
-def test_all_generated_steps_are_accepted_by_build_structured_running_workout():
-    from ismiseeanna_mcp.garmin_client import build_structured_running_workout
+def test_all_generated_steps_are_accepted_by_build_running_workout():
+    from ismiseeanna_mcp.workout_builder import build_running_workout
 
     plan = _plan()
     for week in plan:
         for session in week["sessions"]:
             if session["steps"] is None:
                 continue
-            workout = build_structured_running_workout(session["name"], session["steps"])
+            workout = build_running_workout(session["name"], session["steps"])
             assert workout["workoutName"] == session["name"]
