@@ -1,8 +1,8 @@
 """Generates a periodized marathon training plan as structured workout sessions.
 
 Each session's ``steps`` follow the same shape
-``garmin_client.build_structured_running_workout`` accepts, so a generated
-plan can be turned into real Garmin workouts with the existing
+``workout_builder.build_running_workout`` accepts, so a generated plan can be
+turned into real Garmin workouts with the existing
 ``create_running_workout``/``schedule_workout`` tools without any
 translation step.
 """
@@ -41,10 +41,18 @@ def _paces_from_predictions(race_predictions: dict) -> dict:
     }
 
 
-def _pace_target(pace_sec_per_km: float, spread: float = 5.0) -> dict:
+def _pace_target(pace_sec_per_km: float, spread_sec: float = 5.0) -> dict:
+    """Build a target_pace_min_per_km [low, high] range (decimal minutes/km,
+    workout_builder.build_running_workout's expected unit) centered on
+    ``pace_sec_per_km`` (seconds/km, this module's internal unit) with
+    ``spread_sec`` seconds/km either side."""
+    pace_min_per_km = pace_sec_per_km / 60
+    spread_min_per_km = spread_sec / 60
     return {
-        "target_pace_min_per_km": round(pace_sec_per_km - spread),
-        "target_pace_max_per_km": round(pace_sec_per_km + spread),
+        "target_pace_min_per_km": [
+            round(pace_min_per_km - spread_min_per_km, 2),
+            round(pace_min_per_km + spread_min_per_km, 2),
+        ]
     }
 
 
@@ -90,17 +98,16 @@ def _interval_session(week_km: float, paces: dict) -> dict:
         "steps": [
             {"kind": "warmup", "distance_meters": 1500, **_pace_target(paces["easy"])},
             {
-                "repeat": {
-                    "count": reps,
-                    "steps": [
-                        {
-                            "kind": "interval",
-                            "distance_meters": round(rep_km * 1000),
-                            **_pace_target(paces["interval"]),
-                        },
-                        {"kind": "recovery", "duration_seconds": 120},
-                    ],
-                }
+                "kind": "repeat",
+                "iterations": reps,
+                "steps": [
+                    {
+                        "kind": "interval",
+                        "distance_meters": round(rep_km * 1000),
+                        **_pace_target(paces["interval"]),
+                    },
+                    {"kind": "recovery", "duration_seconds": 120},
+                ],
             },
             {"kind": "cooldown", "distance_meters": 1000, **_pace_target(paces["easy"])},
         ],
@@ -175,17 +182,16 @@ def _sharpener_session(paces: dict) -> dict:
         "steps": [
             {"kind": "warmup", "distance_meters": 1000, **_pace_target(paces["easy"])},
             {
-                "repeat": {
-                    "count": 4,
-                    "steps": [
-                        {
-                            "kind": "interval",
-                            "distance_meters": 200,
-                            **_pace_target(paces["interval"]),
-                        },
-                        {"kind": "recovery", "distance_meters": 200},
-                    ],
-                }
+                "kind": "repeat",
+                "iterations": 4,
+                "steps": [
+                    {
+                        "kind": "interval",
+                        "distance_meters": 200,
+                        **_pace_target(paces["interval"]),
+                    },
+                    {"kind": "recovery", "distance_meters": 200},
+                ],
             },
             {"kind": "cooldown", "distance_meters": 500, **_pace_target(paces["easy"])},
         ],
@@ -212,7 +218,7 @@ def generate_marathon_plan(
     sessions}``, where each session is ``{date, name, steps}`` — ``steps``
     is ``None`` for the race-day entry itself (nothing to schedule as a
     workout) and otherwise matches
-    ``garmin_client.build_structured_running_workout``'s step format.
+    ``workout_builder.build_running_workout``'s step format.
     """
     today = today or date.today()
     try:

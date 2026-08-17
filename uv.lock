@@ -454,11 +454,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/84/6f/286e87787d11627027c5277fac5afb606040a77af4d98bdd0dade5e5dcfa/garminconnect-0.3.2-py3-none-any.whl", hash = "sha256:d0b6f332c3262209ef3e48e9a49ccf797a70ff5a7fbd9a546a9c4e9375654106", size = 46239, upload-time = "2026-04-11T09:22:04.53Z" },
 ]
 
-[package.optional-dependencies]
-workout = [
-    { name = "pydantic", marker = "python_full_version < '3.12'" },
-]
-
 [[package]]
 name = "garminconnect"
 version = "0.3.9"
@@ -477,11 +472,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c3/c8/81e2b6e8c9a460809286b7df7a9f98e3cc94f4e02aeefc59c5f34b6740a2/garminconnect-0.3.9.tar.gz", hash = "sha256:890b4b1c6afa9e77f3bdd2ac78a4d69432ac27561338a5b33af42c4d0e407b4e", size = 94554, upload-time = "2026-08-07T13:51:54.165Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/38/e43322beee06b8a9707390078af87869e195199ae12011dceecf9605bd33/garminconnect-0.3.9-py3-none-any.whl", hash = "sha256:6fdf8214eb0821e5a86f1ff1920a42a2ef36f04af94ed3d08c46562fd4759163", size = 88525, upload-time = "2026-08-07T13:51:52.654Z" },
-]
-
-[package.optional-dependencies]
-workout = [
-    { name = "pydantic", marker = "python_full_version >= '3.12'" },
 ]
 
 [[package]]
@@ -555,9 +545,10 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "fastapi" },
-    { name = "garminconnect", version = "0.3.2", source = { registry = "https://pypi.org/simple" }, extra = ["workout"], marker = "python_full_version < '3.12'" },
-    { name = "garminconnect", version = "0.3.9", source = { registry = "https://pypi.org/simple" }, extra = ["workout"], marker = "python_full_version >= '3.12'" },
+    { name = "garminconnect", version = "0.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "garminconnect", version = "0.3.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "mcp" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "uvicorn" },
 ]
 
@@ -571,8 +562,9 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "garminconnect", extras = ["workout"], specifier = ">=0.3.0,<0.4" },
+    { name = "garminconnect", specifier = ">=0.3.2,<0.4" },
     { name = "mcp", specifier = ">=1.2.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 

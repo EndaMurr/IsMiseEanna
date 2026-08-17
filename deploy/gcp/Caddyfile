@@ -1,0 +1,7 @@
+# setup.sh substitutes REPLACE-WITH-YOUR-HOSTNAME with the real hostname
+# (e.g. 34-71-12-9.sslip.io) and installs this to /etc/caddy/Caddyfile.
+# Caddy obtains and renews the Let's Encrypt certificate for it automatically
+# on first request - no manual cert management.
+REPLACE-WITH-YOUR-HOSTNAME {
+	reverse_proxy 127.0.0.1:8000
+}
