@@ -54,12 +54,17 @@ def build_weekly_check_in(
     same-workout match, since a plan generated elsewhere (e.g. Runna) has no
     workoutId this project can compare against directly.
 
+    A non-completed item only counts as "missed" if its date has already
+    passed (today's own session, and anything later in the week, is
+    "upcoming" instead — it hasn't happened yet, so it can't be missed).
+
     Returns ``{weekStart, weekEnd, sessionsScheduled, sessionsCompleted,
-    sessionsMissed, recoveryTrend, readinessSuppressed, hrvSuppressed}``.
-    Deliberately returns data, not a canned recommendation — the narrative
-    (what to actually do about it) is for whoever calls this to write,
-    conversationally, from this data.
+    sessionsMissed, sessionsUpcoming, recoveryTrend, readinessSuppressed,
+    hrvSuppressed}``. Deliberately returns data, not a canned recommendation
+    - the narrative (what to actually do about it) is for whoever calls this
+    to write, conversationally, from this data.
     """
+    today = today or date.today()
     week_start, week_end = _week_range(today)
 
     scheduled_in_week = [
@@ -76,10 +81,16 @@ def build_weekly_check_in(
 
     completed_items = []
     missed_items = []
+    upcoming_items = []
     for item in scheduled_in_week:
         item_date = date.fromisoformat(item["date"])
         is_done = any(abs((d - item_date).days) <= match_tolerance_days for d in completed_dates)
-        (completed_items if is_done else missed_items).append(item)
+        if is_done:
+            completed_items.append(item)
+        elif item_date < today:
+            missed_items.append(item)
+        else:
+            upcoming_items.append(item)
 
     readiness_trend = recovery_trend.get("trainingReadiness") or []
     hrv_trend = recovery_trend.get("hrv") or []
@@ -90,6 +101,7 @@ def build_weekly_check_in(
         "sessionsScheduled": len(scheduled_in_week),
         "sessionsCompleted": completed_items,
         "sessionsMissed": missed_items,
+        "sessionsUpcoming": upcoming_items,
         "recoveryTrend": recovery_trend,
         "readinessSuppressed": _is_suppressed(readiness_trend),
         "hrvSuppressed": _is_suppressed(hrv_trend),
