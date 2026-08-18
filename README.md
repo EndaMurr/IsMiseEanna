@@ -380,6 +380,35 @@ and the deployer's email are already hardcoded into `deploy.yml` - neither
 is a secret, since the `attribute-condition` above is what actually
 restricts who can use them. No GitHub secret to add at all.
 
+Three more one-time gaps `gcloud compute ssh` hits that the roles above
+don't cover on their own - each only shows up by actually running the
+workflow and reading the next error, so do all three now rather than
+discovering them one deploy at a time:
+
+```bash
+# gcloud impersonates the deployer via WIF using this API; it's off by
+# default on new projects.
+gcloud services enable iamcredentials.googleapis.com --project=garmin-mcp-505007
+
+# Without OS Login enabled, gcloud falls back to legacy SSH keys in
+# instance metadata, which needs a much broader compute.instances.setMetadata
+# permission we deliberately didn't grant. Scoped to just this instance.
+gcloud compute instances add-metadata ismiseeanna-mcp \
+  --project=garmin-mcp-505007 --zone=us-central1-a \
+  --metadata enable-oslogin=TRUE
+
+# gcloud compute ssh also checks the deployer can act as the VM's own
+# attached service account, separately from the roles granted above.
+INSTANCE_SA=$(gcloud compute instances describe ismiseeanna-mcp \
+  --project=garmin-mcp-505007 --zone=us-central1-a \
+  --format="value(serviceAccounts[0].email)")
+
+gcloud iam service-accounts add-iam-policy-binding "$INSTANCE_SA" \
+  --project=garmin-mcp-505007 \
+  --member="serviceAccount:$DEPLOYER" \
+  --role="roles/iam.serviceAccountUser"
+```
+
 From then on, every push to `claude/garmin-mcp-server-b3sj3m` that passes
 CI redeploys automatically; check the **Actions** tab for status, and the
 workflow's "Show recent service logs" step captures `journalctl` output on
