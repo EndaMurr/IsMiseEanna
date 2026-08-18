@@ -49,6 +49,23 @@ fun ChatIcon(tint: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun PlanIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(22.dp)) {
+        val strokeWidth = 2.dp.toPx()
+        val w = size.width
+        val h = size.height
+        drawLine(tint, Offset(w * 0.22f, h * 0.9f), Offset(w * 0.22f, h * 0.12f), strokeWidth, StrokeCap.Round)
+        val pennant = Path().apply {
+            moveTo(w * 0.22f, h * 0.15f)
+            lineTo(w * 0.82f, h * 0.32f)
+            lineTo(w * 0.22f, h * 0.5f)
+            close()
+        }
+        drawPath(pennant, tint, style = Stroke(width = strokeWidth))
+    }
+}
+
+@Composable
 fun StatusIcon(tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.size(22.dp)) {
         val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)

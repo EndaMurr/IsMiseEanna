@@ -352,6 +352,56 @@ def test_get_weekly_check_in_gathers_calendar_activity_and_recovery_data(
     assert result["sessionsMissed"] == []
 
 
+def _patch_fixed_today(monkeypatch, fixed):
+    import datetime as dt
+
+    from ismiseeanna_mcp import plan_progress as plan_progress_module
+    from ismiseeanna_mcp import realignment as realignment_module
+
+    class _FixedDate(dt.date):
+        @classmethod
+        def today(cls):
+            return fixed
+
+    monkeypatch.setattr(realignment_module, "date", _FixedDate)
+    monkeypatch.setattr(plan_progress_module, "date", _FixedDate)
+
+
+def test_get_plan_progress_parses_current_week_from_calendar(fake_client, monkeypatch):
+    import datetime as dt
+
+    _patch_fixed_today(monkeypatch, dt.date(2026, 8, 16))  # Sunday -> week Mon 08-10..Sun 08-16
+
+    fake_client.get_scheduled_workouts.return_value = {
+        "calendarItems": [
+            {"date": "2026-08-11", "title": "W6 Tue Tempo - 2km Repeats", "id": 555},
+            {"date": "2026-08-14", "title": "28km Run"},
+        ]
+    }
+
+    result = server.get_plan_progress("2026-10-03")
+
+    fake_client.get_scheduled_workouts.assert_called_once_with(2026, 8)
+    assert result["currentWeek"] == 6
+    assert result["matchedSessionName"] == "W6 Tue Tempo - 2km Repeats"
+    assert result["totalWeeks"] is not None
+
+
+def test_get_plan_progress_degrades_gracefully_with_no_matching_session(fake_client, monkeypatch):
+    import datetime as dt
+
+    _patch_fixed_today(monkeypatch, dt.date(2026, 8, 16))
+
+    fake_client.get_scheduled_workouts.return_value = {
+        "calendarItems": [{"date": "2026-08-11", "title": "28km Run"}]
+    }
+
+    result = server.get_plan_progress("2026-10-03")
+
+    assert result["currentWeek"] is None
+    assert result["totalWeeks"] is None
+
+
 def test_create_running_workout_builds_and_uploads(fake_client):
     fake_client.upload_workout.return_value = {"workoutId": 42, "workoutName": "Easy Run"}
 

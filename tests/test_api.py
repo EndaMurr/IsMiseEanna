@@ -97,6 +97,63 @@ def test_dashboard_tolerates_missing_data(client, auth_headers, fake_garmin_clie
     assert response.json()["today"]["bodyBattery"] is None
 
 
+def test_weekly_check_in_endpoint_returns_tool_result(client, auth_headers, fake_garmin_client):
+    fake_garmin_client.get_scheduled_workouts.return_value = {"calendarItems": []}
+    fake_garmin_client.get_activities_by_date.return_value = []
+    fake_garmin_client.get_training_readiness.return_value = None
+    fake_garmin_client.get_hrv_data.return_value = None
+
+    response = client.get("/weekly-check-in", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "weekStart" in body
+    assert "sessionsScheduled" in body
+
+
+def test_weekly_check_in_endpoint_sanitizes_garmin_errors(
+    client, auth_headers, fake_garmin_client
+):
+    fake_garmin_client.get_scheduled_workouts.side_effect = RuntimeError(
+        "http://internal-detail leaked"
+    )
+
+    response = client.get("/weekly-check-in", headers=auth_headers)
+
+    assert response.status_code == 502
+    assert "internal-detail" not in response.text
+
+
+def test_plan_progress_endpoint_returns_tool_result(client, auth_headers, fake_garmin_client):
+    fake_garmin_client.get_scheduled_workouts.return_value = {
+        "calendarItems": [{"date": "2026-08-11", "title": "W6 Tue Tempo - 2km Repeats"}]
+    }
+
+    response = client.get(
+        "/plan-progress", headers=auth_headers, params={"race_date": "2026-10-03"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["currentWeek"] == 6
+    assert body["raceDate"] == "2026-10-03"
+
+
+def test_plan_progress_endpoint_requires_race_date_query_param(client, auth_headers):
+    response = client.get("/plan-progress", headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_plan_progress_endpoint_rejects_bad_race_date(client, auth_headers, fake_garmin_client):
+    fake_garmin_client.get_scheduled_workouts.return_value = {"calendarItems": []}
+
+    response = client.get(
+        "/plan-progress", headers=auth_headers, params={"race_date": "not-a-date"}
+    )
+
+    assert response.status_code == 400
+
+
 def test_chat_returns_text_reply_without_tools(client, auth_headers, monkeypatch):
     text_block = MagicMock(type="text", text="Hello from Claude")
     fake_response = MagicMock(stop_reason="end_turn", content=[text_block])

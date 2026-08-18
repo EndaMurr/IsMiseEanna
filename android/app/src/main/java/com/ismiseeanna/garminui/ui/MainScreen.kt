@@ -38,7 +38,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class Tab { DASHBOARD, CHAT, STATUS }
+enum class Tab { DASHBOARD, PLAN, CHAT, STATUS }
 
 @Composable
 fun MainScreen() {
@@ -51,6 +51,7 @@ fun MainScreen() {
         Box(modifier = Modifier.weight(1f)) {
             when (tab) {
                 Tab.DASHBOARD -> DashboardScreen(settings)
+                Tab.PLAN -> PlanScreen(settings)
                 Tab.CHAT -> ChatScreen(settings)
                 Tab.STATUS -> StatusScreen(settings)
             }
@@ -92,6 +93,12 @@ private fun BottomNav(current: Tab, onSelect: (Tab) -> Unit) {
                 selected = current == Tab.DASHBOARD,
                 icon = { tint -> DashboardIcon(tint) },
                 onClick = { onSelect(Tab.DASHBOARD) },
+            )
+            NavItem(
+                label = "Plan",
+                selected = current == Tab.PLAN,
+                icon = { tint -> PlanIcon(tint) },
+                onClick = { onSelect(Tab.PLAN) },
             )
             NavItem(
                 label = "Chat",

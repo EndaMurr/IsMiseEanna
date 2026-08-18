@@ -10,6 +10,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 @JsonClass(generateAdapter = true)
 data class DashboardToday(
@@ -44,6 +45,43 @@ data class StatusResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class SessionSummary(
+    val date: String?,
+    val name: String?,
+    val scheduledWorkoutId: Long?,
+    val workoutId: Long?,
+)
+
+@JsonClass(generateAdapter = true)
+data class RecoveryTrend(
+    val trainingReadiness: List<Double?>,
+    val hrv: List<Double?>,
+)
+
+@JsonClass(generateAdapter = true)
+data class WeeklyCheckInResponse(
+    val weekStart: String,
+    val weekEnd: String,
+    val sessionsScheduled: Int,
+    val sessionsCompleted: List<SessionSummary>,
+    val sessionsMissed: List<SessionSummary>,
+    val sessionsUpcoming: List<SessionSummary>,
+    val recoveryTrend: RecoveryTrend,
+    val readinessSuppressed: Boolean,
+    val hrvSuppressed: Boolean,
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanProgressResponse(
+    val raceDate: String,
+    val daysUntilRace: Int,
+    val currentWeek: Int?,
+    val weeksRemaining: Int?,
+    val totalWeeks: Int?,
+    val matchedSessionName: String?,
+)
+
+@JsonClass(generateAdapter = true)
 data class ChatMessage(
     val role: String,
     val content: String,
@@ -65,6 +103,15 @@ interface GarminApi {
 
     @GET("dashboard")
     suspend fun getDashboard(@Header("Authorization") auth: String): DashboardResponse
+
+    @GET("weekly-check-in")
+    suspend fun getWeeklyCheckIn(@Header("Authorization") auth: String): WeeklyCheckInResponse
+
+    @GET("plan-progress")
+    suspend fun getPlanProgress(
+        @Header("Authorization") auth: String,
+        @Query("race_date") raceDate: String,
+    ): PlanProgressResponse
 
     @POST("chat")
     suspend fun chat(@Header("Authorization") auth: String, @Body request: ChatRequest): ChatResponse
