@@ -344,6 +344,11 @@ def get_weekly_check_in() -> dict:
     sustained-suppressed for the last few days, are worth reading together
     with what's actually on the plan for the coming week.
 
+    Each scheduled item also carries its scheduledWorkoutId/workoutId, so if
+    a missed or upcoming session is worth moving (e.g. easing a hard day
+    back given suppressed readiness), pass those straight to
+    move_scheduled_workout rather than looking them up again.
+
     NOTE: calendar-item field names ("date"/"title") are a best-effort
     reading of Garmin's undocumented calendar response; if scheduled-session
     names or dates look wrong, verify against the real Garmin Connect app.
@@ -359,7 +364,12 @@ def get_weekly_check_in() -> dict:
         calendar_items.extend((response or {}).get("calendarItems") or [])
 
     scheduled = [
-        {"date": item.get("date"), "name": item.get("title") or item.get("workoutName")}
+        {
+            "date": item.get("date"),
+            "name": item.get("title") or item.get("workoutName"),
+            "scheduledWorkoutId": item.get("id"),
+            "workoutId": item.get("workoutId"),
+        }
         for item in calendar_items
         if item.get("date")
     ]
@@ -519,6 +529,35 @@ def unschedule_workout(scheduled_workout_id: int) -> str:
     list_scheduled_workouts' result), not the workout template's own ID."""
     _call_client(lambda: get_client().unschedule_workout(scheduled_workout_id))
     return f"Removed scheduled workout {scheduled_workout_id} from the calendar"
+
+
+@mcp.tool()
+def move_scheduled_workout(scheduled_workout_id: int, workout_id: int, new_date: str) -> dict:
+    """Move a scheduled workout to a new date, keeping its exact original
+    definition (pace targets, structure, etc.) unchanged - only the date
+    moves. This works regardless of which app scheduled the session
+    originally (Runna, ismiseeanna, or manual) - Garmin's calendar has no
+    concept of which app a workout came from.
+
+    Use this instead of unschedule_workout + create_running_workout/
+    schedule_workout whenever the request is to shift an *existing* session
+    to a different day (e.g. "move Friday's long run to Saturday") - it
+    guarantees the moved session still asks for exactly what it did before,
+    rather than risking a rebuilt approximation of it. Only fall back to
+    creating a new workout if the user actually wants the session's content
+    to change too (different distance, pace, structure), not just its date.
+
+    `scheduled_workout_id` is the calendar entry's own ID and `workout_id`
+    is the underlying saved workout template's ID - both are on the same
+    item in list_scheduled_workouts'/get_weekly_check_in's results (as
+    `scheduledWorkoutId` and `workoutId` respectively).
+
+    A session pushed by another app (Runna's own sync, for example) can get
+    re-created by that app later - mention this to the user the first time
+    they move one of those, since it's not something this project controls.
+    """
+    _call_client(lambda: get_client().unschedule_workout(scheduled_workout_id))
+    return _call_client(lambda: get_client().schedule_workout(workout_id, new_date))
 
 
 @mcp.tool()

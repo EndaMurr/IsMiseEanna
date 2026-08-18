@@ -176,6 +176,7 @@ _EXPOSED_TOOLS = [
     garmin_tools.schedule_workout,
     garmin_tools.list_scheduled_workouts,
     garmin_tools.unschedule_workout,
+    garmin_tools.move_scheduled_workout,
     garmin_tools.delete_workout,
 ]
 
