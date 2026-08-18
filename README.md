@@ -319,6 +319,48 @@ authorization server from the server's metadata, register itself as a
 client, and walk you through logging in - after that the connector is
 available in any chat.
 
+### 4. Auto-deploy on merge to the GCP VM (optional)
+
+`.github/workflows/deploy.yml` redeploys the GCP option automatically after
+`CI` passes on `claude/garmin-mcp-server-b3sj3m` - the exact `git pull` +
+`uv sync` + `systemctl restart` from the manual redeploy above, run by
+GitHub Actions instead of by hand. It needs a GCP service account scoped to
+just "SSH into this one instance via IAP," stored as a single repo secret:
+
+```bash
+gcloud iam service-accounts create ismiseeanna-deployer \
+  --project=garmin-mcp-505007 \
+  --display-name="ismiseeanna-mcp GitHub Actions deployer"
+
+DEPLOYER="ismiseeanna-deployer@garmin-mcp-505007.iam.gserviceaccount.com"
+
+# Log in and run sudo commands over OS Login, and open an IAP tunnel to
+# reach the instance - nothing broader (no project-wide compute access).
+gcloud projects add-iam-policy-binding garmin-mcp-505007 \
+  --member="serviceAccount:$DEPLOYER" --role="roles/compute.osAdminLogin"
+gcloud projects add-iam-policy-binding garmin-mcp-505007 \
+  --member="serviceAccount:$DEPLOYER" --role="roles/iap.tunnelResourceAccessor"
+gcloud projects add-iam-policy-binding garmin-mcp-505007 \
+  --member="serviceAccount:$DEPLOYER" --role="roles/compute.viewer"
+
+gcloud iam service-accounts keys create ismiseeanna-deployer-key.json \
+  --iam-account="$DEPLOYER"
+```
+
+Add the downloaded key's contents as a repo secret named `GCP_SA_KEY`
+(**Settings → Secrets and variables → Actions → New repository secret** on
+GitHub), then delete the local key file - it's only needed to create the
+secret once:
+
+```bash
+rm ismiseeanna-deployer-key.json
+```
+
+From then on, every push to `claude/garmin-mcp-server-b3sj3m` that passes
+CI redeploys automatically; check the **Actions** tab for status, and the
+workflow's "Show recent service logs" step captures `journalctl` output on
+a failed deploy.
+
 ### Relevant environment variables
 
 | Variable | Required for | Purpose |
