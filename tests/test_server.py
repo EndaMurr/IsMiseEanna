@@ -321,7 +321,12 @@ def test_get_weekly_check_in_gathers_calendar_activity_and_recovery_data(
 
     fake_client.get_scheduled_workouts.return_value = {
         "calendarItems": [
-            {"date": "2026-08-11", "title": "Tempo Run"},
+            {
+                "date": "2026-08-11",
+                "title": "Tempo Run",
+                "id": 555,
+                "workoutId": 999,
+            },
             {"date": "2026-08-09", "title": "Previous week, must be excluded"},
         ]
     }
@@ -341,7 +346,9 @@ def test_get_weekly_check_in_gathers_calendar_activity_and_recovery_data(
     assert result["weekEnd"] == "2026-08-16"
     assert result["recoveryTrend"]["trainingReadiness"] == [65] * 7
     assert result["recoveryTrend"]["hrv"] == [55] * 7
-    assert result["sessionsCompleted"] == [{"date": "2026-08-11", "name": "Tempo Run"}]
+    assert result["sessionsCompleted"] == [
+        {"date": "2026-08-11", "name": "Tempo Run", "scheduledWorkoutId": 555, "workoutId": 999}
+    ]
     assert result["sessionsMissed"] == []
 
 
@@ -452,6 +459,27 @@ def test_unschedule_workout_calls_client_and_confirms(fake_client):
     result = server.unschedule_workout(99)
     fake_client.unschedule_workout.assert_called_once_with(99)
     assert result == "Removed scheduled workout 99 from the calendar"
+
+
+def test_move_scheduled_workout_unschedules_then_reschedules_same_workout(fake_client):
+    fake_client.schedule_workout.return_value = {"scheduleId": 100, "date": "2026-08-16"}
+
+    result = server.move_scheduled_workout(
+        scheduled_workout_id=555, workout_id=999, new_date="2026-08-16"
+    )
+
+    fake_client.unschedule_workout.assert_called_once_with(555)
+    fake_client.schedule_workout.assert_called_once_with(999, "2026-08-16")
+    assert result == {"scheduleId": 100, "date": "2026-08-16"}
+
+
+def test_move_scheduled_workout_does_not_reschedule_if_unschedule_fails(fake_client):
+    fake_client.unschedule_workout.side_effect = ValueError("boom")
+
+    with pytest.raises(RuntimeError):
+        server.move_scheduled_workout(scheduled_workout_id=555, workout_id=999, new_date="2026-08-16")
+
+    fake_client.schedule_workout.assert_not_called()
 
 
 def test_list_scheduled_workouts_passes_through(fake_client):

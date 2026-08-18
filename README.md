@@ -69,6 +69,9 @@ need the password.
   the Garmin Connect calendar for a date (`YYYY-MM-DD`)
 - `unschedule_workout(scheduled_workout_id)` — remove a workout from the
   calendar without deleting the underlying workout template
+- `move_scheduled_workout(scheduled_workout_id, workout_id, new_date)` —
+  shift an existing scheduled session (from any app — Runna included) to a
+  new date without changing what it actually asks for
 - `list_scheduled_workouts(year, month)` — what's on the Garmin Connect
   calendar for a given month
 
