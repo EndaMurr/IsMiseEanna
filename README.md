@@ -53,6 +53,7 @@ need the password.
 - `get_endurance_score(date)` — endurance score for one date
 - `generate_marathon_plan(race_date, current_weekly_km, strategy)` — preview a periodized marathon plan (paces derived from `get_race_predictions`); returns weeks of sessions to review, doesn't create or schedule anything
 - `get_weekly_check_in()` — compares this week's scheduled Garmin-calendar sessions (from any app — Runna, ismiseeanna, or manual) against completed activities, plus the recent training-readiness/HRV trend; read-only, returns data rather than a recommendation
+- `get_plan_progress(race_date)` — parses this week's calendar session names for Runna's "W# Day Type" naming convention to report which week of the plan you're in, plus weeks remaining until `race_date`; returns `currentWeek`/`totalWeeks` as null (not an error) if nothing this week matches that convention
 
 ### Workouts
 

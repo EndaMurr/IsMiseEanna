@@ -3,6 +3,7 @@
 import logging
 import os
 from collections.abc import Callable
+from datetime import date
 from typing import TypeVar
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from pydantic import AnyHttpUrl
 
 from .garmin_client import _extract_hrv, _extract_training_readiness, _n_day_trend, get_client
 from .plan_generator import generate_marathon_plan as _generate_marathon_plan
+from .plan_progress import build_plan_progress as _build_plan_progress
 from .realignment import _week_range, build_weekly_check_in
 from .workout_builder import WorkoutBuilderError, build_running_workout
 
@@ -331,6 +333,30 @@ def generate_marathon_plan(
     return _generate_marathon_plan(race_date, current_weekly_km, race_predictions, strategy)
 
 
+def _fetch_scheduled_for_week(week_start: date, week_end: date) -> list[dict]:
+    """Fetch and normalize Garmin calendar items for the given Mon-Sun week,
+    for reuse by get_weekly_check_in and get_plan_progress.
+    """
+    months = {(week_start.year, week_start.month), (week_end.year, week_end.month)}
+    calendar_items = []
+    for year, month in months:
+        response = _call_client(
+            lambda year=year, month=month: get_client().get_scheduled_workouts(year, month)
+        )
+        calendar_items.extend((response or {}).get("calendarItems") or [])
+
+    return [
+        {
+            "date": item.get("date"),
+            "name": item.get("title") or item.get("workoutName"),
+            "scheduledWorkoutId": item.get("id"),
+            "workoutId": item.get("workoutId"),
+        }
+        for item in calendar_items
+        if item.get("date")
+    ]
+
+
 @mcp.tool()
 def get_weekly_check_in() -> dict:
     """Compare this week's scheduled Garmin-calendar sessions against what you
@@ -354,25 +380,7 @@ def get_weekly_check_in() -> dict:
     names or dates look wrong, verify against the real Garmin Connect app.
     """
     week_start, week_end = _week_range()
-
-    months = {(week_start.year, week_start.month), (week_end.year, week_end.month)}
-    calendar_items = []
-    for year, month in months:
-        response = _call_client(
-            lambda year=year, month=month: get_client().get_scheduled_workouts(year, month)
-        )
-        calendar_items.extend((response or {}).get("calendarItems") or [])
-
-    scheduled = [
-        {
-            "date": item.get("date"),
-            "name": item.get("title") or item.get("workoutName"),
-            "scheduledWorkoutId": item.get("id"),
-            "workoutId": item.get("workoutId"),
-        }
-        for item in calendar_items
-        if item.get("date")
-    ]
+    scheduled = _fetch_scheduled_for_week(week_start, week_end)
 
     activities = _call_client(
         lambda: get_client().get_activities_by_date(
@@ -389,6 +397,27 @@ def get_weekly_check_in() -> dict:
     }
 
     return build_weekly_check_in(scheduled, completed, recovery_trend)
+
+
+@mcp.tool()
+def get_plan_progress(race_date: str) -> dict:
+    """Figure out which week of your Runna-style training plan you're in,
+    and how many weeks remain until race day.
+
+    Reads this week's Garmin-calendar session names for a "W<n> <Day>
+    <Type> - <detail>" convention (Runna's naming pattern, e.g. "W6 Tue
+    Tempo - 2km Repeats") to determine the current week, then combines that
+    with `race_date` (YYYY-MM-DD) to compute weeksRemaining and totalWeeks.
+
+    currentWeek/totalWeeks come back null (not an error) if this week has
+    no session matching that convention — a rest week, a non-Runna plan, or
+    no plan at all all look identical from calendar data alone.
+
+    Raises a ValueError if race_date isn't a valid YYYY-MM-DD date.
+    """
+    week_start, week_end = _week_range()
+    scheduled = _fetch_scheduled_for_week(week_start, week_end)
+    return _build_plan_progress(scheduled, race_date)
 
 
 def _summarize_workout(workout: dict) -> dict:

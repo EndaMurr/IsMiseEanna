@@ -147,6 +147,29 @@ def get_dashboard(_: None = Depends(require_auth)) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Weekly check-in / plan progress
+# ---------------------------------------------------------------------------
+
+
+@app.get("/weekly-check-in")
+def get_weekly_check_in_endpoint(_: None = Depends(require_auth)) -> dict:
+    try:
+        return garmin_tools.get_weekly_check_in()
+    except (GarminClientError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/plan-progress")
+def get_plan_progress_endpoint(race_date: str, _: None = Depends(require_auth)) -> dict:
+    try:
+        return garmin_tools.get_plan_progress(race_date)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except (GarminClientError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+# ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
 
@@ -170,6 +193,8 @@ _EXPOSED_TOOLS = [
     garmin_tools.get_race_predictions,
     garmin_tools.get_endurance_score,
     garmin_tools.generate_marathon_plan,
+    garmin_tools.get_weekly_check_in,
+    garmin_tools.get_plan_progress,
     garmin_tools.list_workouts,
     garmin_tools.get_workout,
     garmin_tools.create_running_workout,

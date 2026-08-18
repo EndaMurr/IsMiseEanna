@@ -1,8 +1,8 @@
 # Garmin UI (Android)
 
 A personal, single-user Android client for the `ismiseeanna-api` backend
-(`../README.md` → "Garmin UI mobile app backend"): Dashboard, Chat, and
-Status screens over a bottom tab bar, styled after the Modernist design
+(`../README.md` → "Garmin UI mobile app backend"): Dashboard, Plan, Chat,
+and Status screens over a bottom tab bar, styled after the Modernist design
 system (flat, red-on-white, 2px rules, zero corner radius).
 
 ## Opening the project
@@ -32,6 +32,12 @@ On first launch, open the **Status** tab and fill in:
 - **API token** — the same value as the backend's `GARMIN_UI_API_TOKEN`.
 
 Both are stored locally via Jetpack DataStore.
+
+The **Plan** tab shows this week's check-in (scheduled vs. completed
+sessions, recovery trend) plus which week of your plan you're in — the
+latter needs a race date, entered once inline on that screen; it's parsed
+against Runna's "W# Day Type" calendar-session naming convention, so it
+only resolves to a real week number if that's what's actually scheduled.
 
 ## Known simplifications vs. the original mockup
 
