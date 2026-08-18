@@ -12,15 +12,24 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  id-token: write # required to mint the OIDC token Workload Identity Federation exchanges below
+
 jobs:
   deploy:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      # No long-lived key: GitHub mints a short-lived OIDC token for this run,
+      # which GCP exchanges for a token as ismiseeanna-deployer - but only if
+      # the token's "repository" claim matches EndaMurr/IsMiseEanna (enforced
+      # by the provider's attribute-condition, set up in the README).
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/324206726205/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: ismiseeanna-deployer@garmin-mcp-505007.iam.gserviceaccount.com
 
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2

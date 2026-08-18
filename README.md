@@ -328,7 +328,7 @@ available in any chat.
 `CI` passes on `claude/garmin-mcp-server-b3sj3m` - the exact `git pull` +
 `uv sync` + `systemctl restart` from the manual redeploy above, run by
 GitHub Actions instead of by hand. It needs a GCP service account scoped to
-just "SSH into this one instance via IAP," stored as a single repo secret:
+just "SSH into this one instance via IAP":
 
 ```bash
 gcloud iam service-accounts create ismiseeanna-deployer \
@@ -345,19 +345,40 @@ gcloud projects add-iam-policy-binding garmin-mcp-505007 \
   --member="serviceAccount:$DEPLOYER" --role="roles/iap.tunnelResourceAccessor"
 gcloud projects add-iam-policy-binding garmin-mcp-505007 \
   --member="serviceAccount:$DEPLOYER" --role="roles/compute.viewer"
-
-gcloud iam service-accounts keys create ismiseeanna-deployer-key.json \
-  --iam-account="$DEPLOYER"
 ```
 
-Add the downloaded key's contents as a repo secret named `GCP_SA_KEY`
-(**Settings → Secrets and variables → Actions → New repository secret** on
-GitHub), then delete the local key file - it's only needed to create the
-secret once:
+Newer GCP projects block downloadable service-account keys by default
+(`constraints/iam.disableServiceAccountKeyCreation`), and a key would be a
+permanent, non-expiring secret anyway - so instead of a key, GitHub Actions
+authenticates via **Workload Identity Federation**: GCP trusts a
+short-lived OIDC token that GitHub mints for each workflow run, scoped so
+only runs from this exact repo can assume the deployer identity.
 
 ```bash
-rm ismiseeanna-deployer-key.json
+PROJECT_NUMBER=$(gcloud projects describe garmin-mcp-505007 --format="value(projectNumber)")
+
+gcloud iam workload-identity-pools create "github-pool" \
+  --project=garmin-mcp-505007 --location="global" \
+  --display-name="GitHub Actions pool"
+
+gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+  --project=garmin-mcp-505007 --location="global" \
+  --workload-identity-pool="github-pool" \
+  --display-name="GitHub Actions provider" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition="assertion.repository=='EndaMurr/IsMiseEanna'" \
+  --issuer-uri="https://token.actions.githubusercontent.com"
+
+gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" \
+  --project=garmin-mcp-505007 \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/EndaMurr/IsMiseEanna"
 ```
+
+The provider's resource name (`projects/<number>/locations/global/workloadIdentityPools/github-pool/providers/github-provider`)
+and the deployer's email are already hardcoded into `deploy.yml` - neither
+is a secret, since the `attribute-condition` above is what actually
+restricts who can use them. No GitHub secret to add at all.
 
 From then on, every push to `claude/garmin-mcp-server-b3sj3m` that passes
 CI redeploys automatically; check the **Actions** tab for status, and the
