@@ -254,8 +254,17 @@ private fun SessionRow(session: SessionSummary) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(session.name ?: "Untitled session", color = GarminText)
-            Text(session.date ?: "—", color = GarminNeutral700)
+            Text(
+                session.name ?: "Untitled session",
+                color = GarminText,
+                modifier = Modifier.weight(1f).padding(end = 12.dp),
+            )
+            Text(
+                session.date ?: "—",
+                color = GarminNeutral700,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
         Box(Modifier.fillMaxWidth().height(2.dp).background(GarminDivider))
     }
