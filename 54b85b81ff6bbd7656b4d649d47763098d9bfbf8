@@ -1,0 +1,22 @@
+CORRECTION: this commit message misstates the toolchain versions.
+
+The message says AGP 8.5.2 -> 8.13.2 with Kotlin at 2.0.20. The tree
+this commit actually contains is:
+
+    AGP                        9.3.1   (was 8.5.2)
+    Kotlin android + compose   2.2.10  (was 2.0.20)
+    Gradle wrapper             9.5.0
+    Compose BOM                2024.06.00 (unchanged)
+    Gradle daemon JDK          21
+    Kotlin jvmTarget           17 (unchanged)
+
+The build files were being edited concurrently by another session
+while this commit was being prepared; 'git add -A' staged a newer
+state than the one the message describes.
+
+The code is correct and verified: 'gradlew clean assembleDebug'
+passes locally, and PR #17 added a CI job that builds this tree
+green on a clean ubuntu-latest runner. Only the message was wrong.
+
+Note also that android.newDsl=false in gradle.properties is
+load-bearing under AGP 9 -- the build fails without it.
