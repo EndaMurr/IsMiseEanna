@@ -27,3 +27,23 @@ jobs:
 
       - name: Test
         run: uv run pytest
+
+  android-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must be 21: android/gradle/gradle-daemon-jvm.properties pins the
+      # daemon toolchain to 21, even though the app compiles to Java 17.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+        working-directory: android
