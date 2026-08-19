@@ -283,33 +283,41 @@ def _run_tool(name: str, tool_input: dict) -> Any:
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, _: None = Depends(require_auth)) -> ChatResponse:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(
+            status_code=500, detail="ANTHROPIC_API_KEY is not configured on the server."
+        )
+
     client = anthropic.Anthropic()
     messages: list[dict] = [{"role": m.role, "content": m.content} for m in request.messages]
 
     response = None
-    for _ in range(_MAX_TOOL_ITERATIONS):
-        response = client.messages.create(
-            model="claude-opus-5",
-            max_tokens=2048,
-            system=SYSTEM_PROMPT,
-            tools=CHAT_TOOLS,
-            messages=messages,
-        )
-        messages.append({"role": "assistant", "content": response.content})
+    try:
+        for _ in range(_MAX_TOOL_ITERATIONS):
+            response = client.messages.create(
+                model="claude-opus-5",
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                tools=CHAT_TOOLS,
+                messages=messages,
+            )
+            messages.append({"role": "assistant", "content": response.content})
 
-        if response.stop_reason != "tool_use":
-            break
+            if response.stop_reason != "tool_use":
+                break
 
-        tool_results = [
-            {
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": json.dumps(_run_tool(block.name, block.input), default=str),
-            }
-            for block in response.content
-            if block.type == "tool_use"
-        ]
-        messages.append({"role": "user", "content": tool_results})
+            tool_results = [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(_run_tool(block.name, block.input), default=str),
+                }
+                for block in response.content
+                if block.type == "tool_use"
+            ]
+            messages.append({"role": "user", "content": tool_results})
+    except (anthropic.AnthropicError, GarminClientError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     reply = "".join(block.text for block in response.content if block.type == "text")
     return ChatResponse(reply=reply)

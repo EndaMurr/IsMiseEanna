@@ -1,6 +1,7 @@
 import json
 from unittest.mock import MagicMock
 
+import anthropic
 import pytest
 from fastapi.testclient import TestClient
 
@@ -155,6 +156,7 @@ def test_plan_progress_endpoint_rejects_bad_race_date(client, auth_headers, fake
 
 
 def test_chat_returns_text_reply_without_tools(client, auth_headers, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     text_block = MagicMock(type="text", text="Hello from Claude")
     fake_response = MagicMock(stop_reason="end_turn", content=[text_block])
     fake_anthropic_client = MagicMock()
@@ -172,6 +174,7 @@ def test_chat_returns_text_reply_without_tools(client, auth_headers, monkeypatch
 
 
 def test_chat_executes_tool_then_replies(client, auth_headers, fake_garmin_client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     fake_garmin_client.get_training_readiness.return_value = {"score": 68}
 
     tool_use_block = MagicMock(type="tool_use", id="tool_1", input={"date": "2026-08-10"})
@@ -223,3 +226,33 @@ def test_param_schema_handles_list_and_dict_annotations():
     assert api._param_schema(list[dict]) == {"type": "array", "items": {"type": "object"}}
     assert api._param_schema(dict) == {"type": "object"}
     assert api._param_schema(str | None) == {"type": "string"}
+
+
+def test_chat_reports_missing_anthropic_key(client, auth_headers, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    response = client.post(
+        "/chat",
+        headers=auth_headers,
+        json={"messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert response.status_code == 500
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+def test_chat_maps_anthropic_failure_to_502(client, auth_headers, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    fake_anthropic_client = MagicMock()
+    fake_anthropic_client.messages.create.side_effect = anthropic.APIConnectionError(
+        request=MagicMock()
+    )
+    monkeypatch.setattr(api.anthropic, "Anthropic", lambda: fake_anthropic_client)
+
+    response = client.post(
+        "/chat",
+        headers=auth_headers,
+        json={"messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert response.status_code == 502
