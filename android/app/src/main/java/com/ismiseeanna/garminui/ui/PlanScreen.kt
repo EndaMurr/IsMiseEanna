@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -252,7 +253,7 @@ private fun SessionRow(session: SessionSummary) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
         ) {
             Text(
                 session.name ?: "Untitled session",
@@ -264,6 +265,7 @@ private fun SessionRow(session: SessionSummary) {
                 color = GarminNeutral700,
                 maxLines = 1,
                 softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Box(Modifier.fillMaxWidth().height(2.dp).background(GarminDivider))
