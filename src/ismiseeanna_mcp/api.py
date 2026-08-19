@@ -283,11 +283,6 @@ def _run_tool(name: str, tool_input: dict) -> Any:
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, _: None = Depends(require_auth)) -> ChatResponse:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(
-            status_code=500, detail="ANTHROPIC_API_KEY is not configured on the server."
-        )
-
     client = anthropic.Anthropic()
     messages: list[dict] = [{"role": m.role, "content": m.content} for m in request.messages]
 
@@ -316,6 +311,21 @@ def chat(request: ChatRequest, _: None = Depends(require_auth)) -> ChatResponse:
                 if block.type == "tool_use"
             ]
             messages.append({"role": "user", "content": tool_results})
+    except TypeError as e:
+        # The SDK raises a bare TypeError when it cannot resolve ANY credential
+        # source - an API key, an auth token, an `ant auth login` profile, or
+        # workload identity federation. Checking os.environ for one specific
+        # variable would reject the others, so key off the SDK's own failure and
+        # let every genuine TypeError through untouched.
+        if "authentication" not in str(e).lower():
+            raise
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "No Anthropic credentials are configured on the server. Set "
+                "ANTHROPIC_API_KEY, or sign in with `ant auth login`."
+            ),
+        ) from e
     except (anthropic.AnthropicError, GarminClientError, RuntimeError) as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
