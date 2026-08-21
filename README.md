@@ -157,12 +157,12 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 Once a cached token exists at `~/.garminconnect`, the `env` block can be
 dropped.
 
-## Garmin UI mobile app backend
+## HTTP backend
 
-`ismiseeanna-api` runs a small HTTP API that the companion Android app
-("Garmin UI") talks to. A phone can't speak this project's MCP stdio
-protocol directly, so this wraps the same Garmin functions behind HTTP and
-runs the chat's Claude tool-use loop server-side.
+`ismiseeanna-api` runs a small HTTP API for a phone or browser client that
+can't speak this project's MCP stdio protocol directly - it wraps the same
+Garmin functions behind HTTP and runs the chat's Claude tool-use loop
+server-side.
 
 ```bash
 export GARMIN_UI_API_TOKEN="a long random shared secret"
