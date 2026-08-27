@@ -88,7 +88,7 @@ fi
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "==> Writing $ENV_FILE (first run - fill in real WorkOS/Garmin values before it can log in)"
+  echo "==> Writing $ENV_FILE (first run - fill in real WorkOS/encryption values before it can start)"
   sed "s#REPLACE-WITH-YOUR-HOSTNAME#${HOSTNAME_ARG}#" \
     "$APP_DIR/deploy/gcp/ismiseeanna-mcp.env.example" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
@@ -112,8 +112,8 @@ systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
 echo
 if [ "$NEEDS_EDIT" -eq 1 ]; then
-  echo "==> Next step: edit $ENV_FILE with your real WORKOS_AUTHKIT_DOMAIN,"
-  echo "    GARMIN_EMAIL and GARMIN_PASSWORD, then run:"
+  echo "==> Next step: edit $ENV_FILE with your real WORKOS_AUTHKIT_DOMAIN"
+  echo "    and a generated TOKEN_ENCRYPTION_KEY, then run:"
   echo "      systemctl restart ismiseeanna-mcp"
 else
   echo "==> Done. Server should be reachable at: https://${HOSTNAME_ARG}/mcp"

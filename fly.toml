@@ -8,13 +8,12 @@
 #   fly secrets set \
 #     WORKOS_AUTHKIT_DOMAIN=https://your-project-xxxxx.authkit.app \
 #     MCP_RESOURCE_URL=https://<your-app>.fly.dev/mcp \
-#     GARMIN_EMAIL=you@example.com \
-#     GARMIN_PASSWORD=your-password   # only needed for the very first login
+#     TOKEN_ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 #   fly deploy
 #
-# After the first successful login the Garmin session token is cached on the
-# volume, so GARMIN_EMAIL/GARMIN_PASSWORD can be unset again with
-# `fly secrets unset GARMIN_EMAIL GARMIN_PASSWORD`.
+# No GARMIN_EMAIL/GARMIN_PASSWORD here - every person who adds this
+# connector (including you) connects their own Garmin account via the
+# start_garmin_connection tool after logging in through claude.ai.
 
 app = "ismiseeanna-mcp"   # change to your chosen app name
 primary_region = "iad"    # change to whatever `fly platform regions` suggests as closest

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ismiseeanna_mcp import server
+from ismiseeanna_mcp.garmin_client import GarminClientError, GarminNotConnectedError
 from ismiseeanna_mcp.server import _summarize
 
 
@@ -11,6 +12,24 @@ def fake_client(monkeypatch):
     client = MagicMock()
     monkeypatch.setattr(server, "get_client", lambda: client)
     return client
+
+
+def test_call_client_passes_through_garmin_client_error_unsanitized():
+    def raise_not_connected():
+        raise GarminNotConnectedError("call start_garmin_connection to link your account")
+
+    with pytest.raises(GarminClientError, match="start_garmin_connection"):
+        server._call_client(raise_not_connected)
+
+
+def test_call_client_sanitizes_other_exceptions():
+    def raise_something_sensitive():
+        raise ValueError("boom: sensitive detail")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        server._call_client(raise_something_sensitive)
+    assert "boom" not in str(exc_info.value)
+    assert "ValueError" in str(exc_info.value)
 
 
 def test_build_mcp_returns_unauthenticated_instance_when_env_unset(monkeypatch):
