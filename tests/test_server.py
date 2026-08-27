@@ -85,6 +85,17 @@ def test_build_mcp_wires_auth_when_both_vars_set(monkeypatch):
     assert str(built.settings.auth.resource_server_url) == "https://mcp.example.com/mcp"
     assert built.settings.host == "0.0.0.0"
     assert built.settings.port == 9000
+    assert "start_garmin_connection" in built.instructions
+    assert "never" in built.instructions.lower()  # never paste your password
+
+
+def test_build_mcp_omits_onboarding_instructions_when_unauthenticated(monkeypatch):
+    monkeypatch.delenv("WORKOS_AUTHKIT_DOMAIN", raising=False)
+    monkeypatch.delenv("MCP_RESOURCE_URL", raising=False)
+
+    built = server._build_mcp()
+
+    assert built.instructions is None
 
 
 def test_build_mcp_defaults_host_and_port_when_unset(monkeypatch):
