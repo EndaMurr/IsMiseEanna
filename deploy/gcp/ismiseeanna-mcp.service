@@ -13,10 +13,15 @@ Restart=on-failure
 RestartSec=5
 
 # Sandboxing: the service can only write to its own data directory (the
-# Garmin token cache) and nothing else on the system.
+# Garmin token cache) and nothing else on the system, plus a private /tmp
+# (isolated from the host's real /tmp, still off-limits to everything else)
+# - the Garmin account connection flow briefly writes a decrypted token to a
+# temp file while restoring a session, before running it through the real
+# garminconnect login and re-encrypting it back to ReadWritePaths.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
+PrivateTmp=true
 ReadWritePaths=/var/lib/ismiseeanna-mcp
 
 [Install]
