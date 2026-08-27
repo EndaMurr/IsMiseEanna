@@ -1,17 +1,25 @@
+import json
 import os
 import stat
 
 import pytest
+from cryptography.fernet import Fernet
 
 from ismiseeanna_mcp import garmin_client
-from ismiseeanna_mcp.garmin_client import GarminClientError, _resolve_token_store
+from ismiseeanna_mcp.garmin_client import (
+    GarminClientError,
+    GarminNotConnectedError,
+    _resolve_token_store,
+)
 
 
 @pytest.fixture(autouse=True)
 def reset_client_singleton():
     garmin_client._client = None
+    garmin_client._clients_by_user.clear()
     yield
     garmin_client._client = None
+    garmin_client._clients_by_user.clear()
 
 
 def test_resolve_token_store_defaults_to_home_dotfile(monkeypatch):
@@ -116,3 +124,149 @@ def test_get_client_secures_token_store_after_login(monkeypatch, tmp_path):
 
     assert isinstance(client, FakeGarmin)
     assert stat.S_IMODE(os.stat(token_store).st_mode) == stat.S_IRUSR | stat.S_IWUSR
+
+
+# ---------------------------------------------------------------------------
+# Multi-user (hosted) sessions
+# ---------------------------------------------------------------------------
+
+
+class _FakeInnerClient:
+    def __init__(self):
+        self.data = {"di_token": "t", "di_refresh_token": "r", "di_client_id": "c"}
+
+    def dumps(self):
+        return json.dumps(self.data)
+
+    def loads(self, s):
+        self.data = json.loads(s)
+
+
+class FakeGarminForStorage:
+    """Mimics enough of Garmin for the encrypt/decrypt round trip: a real
+    login() that reads whatever the temp-file loader wrote, same as the
+    real Garmin.login() would when resuming from a cached token."""
+
+    def __init__(self, email=None, password=None):
+        self.client = _FakeInnerClient()
+
+    def login(self, tokenstore_path):
+        path = os.path.join(tokenstore_path, "garmin_tokens.json")
+        with open(path) as f:
+            self.client.loads(f.read())
+
+
+@pytest.mark.parametrize(
+    "user_id,valid",
+    [
+        ("user_123-ABC", True),
+        ("a" * 128, True),
+        ("../etc/passwd", False),
+        ("a/b", False),
+        ("", False),
+        ("a" * 129, False),
+    ],
+)
+def test_safe_user_dirname_rejects_unsafe_ids(user_id, valid):
+    if valid:
+        assert garmin_client._safe_user_dirname(user_id) == user_id
+    else:
+        with pytest.raises(GarminClientError):
+            garmin_client._safe_user_dirname(user_id)
+
+
+def test_write_then_read_user_tokens_round_trips_through_encryption(monkeypatch, tmp_path):
+    monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(tmp_path / "store"))
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(garmin_client, "Garmin", FakeGarminForStorage)
+
+    original = FakeGarminForStorage()
+    original.client.data = {"di_token": "abc", "di_refresh_token": "def", "di_client_id": "ghi"}
+    garmin_client._write_user_tokens("user-1", original)
+
+    raw = (tmp_path / "store" / "user-1" / "garmin_tokens.json").read_bytes()
+    assert b"di_token" not in raw  # not plaintext on disk
+
+    restored = garmin_client._read_user_tokens("user-1")
+    assert restored.client.data == original.client.data
+
+
+def test_read_user_tokens_rejects_wrong_encryption_key(monkeypatch, tmp_path):
+    monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(tmp_path / "store"))
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(garmin_client, "Garmin", FakeGarminForStorage)
+    garmin_client._write_user_tokens("user-1", FakeGarminForStorage())
+
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())  # different key
+    with pytest.raises(GarminClientError, match="decrypted"):
+        garmin_client._read_user_tokens("user-1")
+
+
+def test_get_client_for_user_returns_cached_client(monkeypatch):
+    sentinel = object()
+    garmin_client._clients_by_user["user-1"] = sentinel
+    assert garmin_client._get_client_for_user("user-1") is sentinel
+
+
+def test_get_client_for_user_raises_not_connected_when_no_tokens(monkeypatch, tmp_path):
+    monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(tmp_path / "store"))
+    with pytest.raises(GarminNotConnectedError, match="start_garmin_connection"):
+        garmin_client._get_client_for_user("user-1")
+
+
+def test_get_client_for_user_wraps_login_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(tmp_path / "store"))
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(garmin_client, "Garmin", FakeGarminForStorage)
+    garmin_client._write_user_tokens("user-1", FakeGarminForStorage())
+
+    class FailingFakeGarmin:
+        def __init__(self, email=None, password=None):
+            self.client = _FakeInnerClient()
+
+        def login(self, tokenstore_path):
+            raise ValueError("boom: sensitive detail")
+
+    monkeypatch.setattr(garmin_client, "Garmin", FailingFakeGarmin)
+
+    with pytest.raises(GarminClientError) as exc_info:
+        garmin_client._get_client_for_user("user-1")
+    assert "boom" not in str(exc_info.value)
+
+
+def test_get_client_for_user_requires_a_user_id():
+    with pytest.raises(GarminClientError):
+        garmin_client._get_client_for_user(None)
+
+
+def test_disconnect_user_clears_cache_and_storage(monkeypatch, tmp_path):
+    monkeypatch.setattr(garmin_client, "TOKEN_STORE", str(tmp_path / "store"))
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(garmin_client, "Garmin", FakeGarminForStorage)
+    garmin_client._write_user_tokens("user-1", FakeGarminForStorage())
+    garmin_client._clients_by_user["user-1"] = object()
+
+    garmin_client.disconnect_user("user-1")
+
+    assert "user-1" not in garmin_client._clients_by_user
+    assert not os.path.exists(tmp_path / "store" / "user-1")
+
+
+def test_get_client_dispatches_to_legacy_singleton_when_unauthenticated(monkeypatch):
+    monkeypatch.setattr(
+        "mcp.server.auth.middleware.auth_context.get_access_token", lambda: None
+    )
+    sentinel = object()
+    garmin_client._client = sentinel
+    assert garmin_client.get_client() is sentinel
+
+
+def test_get_client_dispatches_to_per_user_client_when_authenticated(monkeypatch):
+    fake_access_token = type("FakeAccessToken", (), {"subject": "user-1"})()
+    monkeypatch.setattr(
+        "mcp.server.auth.middleware.auth_context.get_access_token",
+        lambda: fake_access_token,
+    )
+    sentinel = object()
+    garmin_client._clients_by_user["user-1"] = sentinel
+    assert garmin_client.get_client() is sentinel

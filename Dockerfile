@@ -20,9 +20,10 @@ RUN useradd --system --create-home --home-dir /data appuser \
     && mkdir -p /data \
     && chown -R appuser:appuser /data /app
 
-# The Garmin session token cache lives under $HOME (see garmin_client.py's
-# GARMINTOKENS handling) - point it at the mounted volume so a login persists
-# across restarts/redeploys instead of needing GARMIN_EMAIL/PASSWORD every time.
+# Per-user Garmin session token caches live under $HOME (see
+# garmin_client.py's GARMINTOKENS handling - in hosted mode this becomes a
+# root of one encrypted subdirectory per connected user) - point it at the
+# mounted volume so logins persist across restarts/redeploys.
 ENV HOME=/data
 ENV GARMINTOKENS=/data/.garminconnect
 ENV MCP_TRANSPORT=streamable-http

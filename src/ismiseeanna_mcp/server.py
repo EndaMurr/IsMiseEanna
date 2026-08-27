@@ -7,12 +7,23 @@ from datetime import date
 from typing import TypeVar
 from urllib.parse import urlparse
 
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
+from starlette.requests import Request
+from starlette.responses import HTMLResponse
 
-from .garmin_client import _extract_hrv, _extract_training_readiness, _n_day_trend, get_client
+from . import onboarding
+from .garmin_client import (
+    GarminClientError,
+    _extract_hrv,
+    _extract_training_readiness,
+    _n_day_trend,
+    disconnect_user,
+    get_client,
+)
 from .plan_generator import generate_marathon_plan as _generate_marathon_plan
 from .plan_progress import build_plan_progress as _build_plan_progress
 from .realignment import _week_range, build_weekly_check_in
@@ -67,6 +78,20 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+# Multi-tenant onboarding (start_garmin_connection, disconnect_garmin_account,
+# the /connect routes) only makes sense once WorkOS auth is actually wired up
+# - local stdio mode keeps today's exact single-account tool list and route
+# table, unchanged. Mirrors _build_mcp()'s own check rather than threading a
+# value out of it, so _build_mcp()'s tested return-a-FastMCP-instance
+# contract doesn't change.
+_HOSTED = bool(os.environ.get("WORKOS_AUTHKIT_DOMAIN")) and bool(
+    os.environ.get("MCP_RESOURCE_URL")
+)
+_RESOURCE_ORIGIN = None
+if _HOSTED:
+    _resource_url = os.environ["MCP_RESOURCE_URL"]
+    _RESOURCE_ORIGIN = f"{urlparse(_resource_url).scheme}://{urlparse(_resource_url).netloc}"
+
 
 def _call_client(fn: Callable[[], T]) -> T:
     """Call a Garmin Connect client method, sanitizing any exception before
@@ -80,6 +105,12 @@ def _call_client(fn: Callable[[], T]) -> T:
     """
     try:
         return fn()
+    except GarminClientError:
+        # Already a safe, actionable message (e.g. GarminNotConnectedError's
+        # "call start_garmin_connection") - don't flatten it into a generic
+        # RuntimeError below. get_client() is called *inside* fn() at every
+        # call site, so this needs to be checked before the catch-all.
+        raise
     except Exception as e:
         logger.exception("Garmin Connect request failed")
         raise RuntimeError(f"Garmin Connect request failed ({type(e).__name__}).") from e
@@ -594,6 +625,108 @@ def list_scheduled_workouts(year: int, month: int) -> dict:
     """List workouts scheduled on the Garmin Connect calendar for one month
     (month: 1-12)."""
     return _call_client(lambda: get_client().get_scheduled_workouts(year, month))
+
+
+def _connect_result_response(token: str, result: dict) -> HTMLResponse:
+    headers = {"Cache-Control": "no-store"}
+    status = result["status"]
+    if status == "connected":
+        return HTMLResponse(
+            onboarding.render_result(
+                True, "Garmin account connected. You can close this page and return to Claude."
+            ),
+            headers=headers,
+        )
+    if status == "mfa_required":
+        return HTMLResponse(onboarding.render_mfa_form(token), headers=headers)
+    if status == "invalid_token":
+        return HTMLResponse(onboarding.render_invalid_token(), status_code=404, headers=headers)
+    if status == "too_many_attempts":
+        return HTMLResponse(
+            onboarding.render_result(
+                False, "Too many incorrect codes. Ask Claude to run start_garmin_connection again."
+            ),
+            headers=headers,
+        )
+    # "error" - re-render whichever form the session is still waiting on
+    message = result.get("message", "Something went wrong.")
+    if onboarding.get_session_state(token) == "awaiting_mfa":
+        return HTMLResponse(onboarding.render_mfa_form(token, error=message), headers=headers)
+    return HTMLResponse(onboarding.render_credentials_form(token, error=message), headers=headers)
+
+
+if _HOSTED:
+    from .garmin_client import _user_token_path
+
+    @mcp.tool()
+    def start_garmin_connection() -> dict:
+        """Link your own Garmin Connect account to this server.
+
+        Returns a one-time link to open in your own browser - open it there,
+        never paste your Garmin email/password directly into this chat. The
+        link expires in 15 minutes and can only be used once.
+
+        Safe to call again if you're not sure whether you're already
+        connected; returns {"status": "already_connected"} instead of a new
+        link in that case.
+        """
+        access_token = get_access_token()
+        if access_token is None or not access_token.subject:
+            raise GarminClientError("No authenticated identity on this request.")
+        user_id = access_token.subject
+
+        if os.path.exists(_user_token_path(user_id)):
+            return {"status": "already_connected"}
+
+        token = onboarding.create_session(user_id)
+        return {
+            "status": "action_required",
+            "connect_url": f"{_RESOURCE_ORIGIN}/connect?token={token}",
+            "expires_in_minutes": 15,
+            "instructions": (
+                "Open this link in your own browser to connect your Garmin "
+                "account - never paste your Garmin password into this chat."
+            ),
+        }
+
+    @mcp.tool()
+    def disconnect_garmin_account() -> str:
+        """Disconnect your Garmin account from this server, deleting your
+        stored session. Any tool call afterward will ask you to reconnect
+        via start_garmin_connection."""
+        access_token = get_access_token()
+        if access_token is None or not access_token.subject:
+            raise GarminClientError("No authenticated identity on this request.")
+        disconnect_user(access_token.subject)
+        return "Garmin account disconnected."
+
+    @mcp.custom_route("/connect", methods=["GET"])
+    async def connect_page(request: Request) -> HTMLResponse:
+        token = request.query_params.get("token", "")
+        state = onboarding.get_session_state(token)
+        headers = {"Cache-Control": "no-store"}
+        if state == "awaiting_credentials":
+            return HTMLResponse(onboarding.render_credentials_form(token), headers=headers)
+        if state == "awaiting_mfa":
+            return HTMLResponse(onboarding.render_mfa_form(token), headers=headers)
+        return HTMLResponse(onboarding.render_invalid_token(), status_code=404, headers=headers)
+
+    @mcp.custom_route("/connect/submit", methods=["POST"])
+    async def connect_submit(request: Request) -> HTMLResponse:
+        form = await request.form()
+        token = str(form.get("token", ""))
+        email = str(form.get("email", ""))
+        password = str(form.get("password", ""))
+        result = onboarding.submit_credentials(token, email, password)
+        return _connect_result_response(token, result)
+
+    @mcp.custom_route("/connect/mfa", methods=["POST"])
+    async def connect_mfa(request: Request) -> HTMLResponse:
+        form = await request.form()
+        token = str(form.get("token", ""))
+        mfa_code = str(form.get("mfa_code", ""))
+        result = onboarding.submit_mfa(token, mfa_code)
+        return _connect_result_response(token, result)
 
 
 def main() -> None:

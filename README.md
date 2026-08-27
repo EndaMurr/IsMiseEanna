@@ -76,6 +76,15 @@ need the password.
 - `list_scheduled_workouts(year, month)` — what's on the Garmin Connect
   calendar for a given month
 
+### Account connection (hosted mode only)
+
+- `start_garmin_connection()` — returns a one-time link to connect your own
+  Garmin account to this server; open it in your own browser, never paste
+  your Garmin password into the chat. See "Connecting your Garmin account"
+  under "Hosted deployment" below.
+- `disconnect_garmin_account()` — disconnect your Garmin account and delete
+  your stored session from this server
+
 ## Creating workouts with natural language
 
 There's no separate "parse this workout" step - Claude reads the tool
@@ -234,18 +243,14 @@ fly volumes create data --size 1 --region <your-region>
 fly secrets set \
   WORKOS_AUTHKIT_DOMAIN=https://your-project-xxxxx.authkit.app \
   MCP_RESOURCE_URL=https://<your-app>.fly.dev/mcp \
-  GARMIN_EMAIL=you@example.com \
-  GARMIN_PASSWORD=your-password    # only needed for the very first login
+  TOKEN_ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 fly deploy
 ```
 
-After the first successful login the Garmin session token is cached on the
-volume (`GARMINTOKENS=/data/.garminconnect`, set in the `Dockerfile`), so
-`GARMIN_EMAIL`/`GARMIN_PASSWORD` can be removed again:
-
-```bash
-fly secrets unset GARMIN_EMAIL GARMIN_PASSWORD
-```
+No `GARMIN_EMAIL`/`GARMIN_PASSWORD` here - in hosted mode, every person who
+adds this connector (including you) connects their own Garmin account
+through `start_garmin_connection` after logging in via claude.ai (see
+"Connecting your Garmin account" below), not a deploy-time secret.
 
 </details>
 
@@ -296,15 +301,17 @@ sudo /tmp/setup/deploy/gcp/setup.sh "$HOSTNAME" claude/garmin-mcp-server-b3sj3m
 ```
 
 It writes `/etc/ismiseeanna-mcp.env` from `deploy/gcp/ismiseeanna-mcp.env.example`
-on first run and tells you to fill in the real `WORKOS_AUTHKIT_DOMAIN`,
-`GARMIN_EMAIL`, and `GARMIN_PASSWORD` there, then:
+on first run and tells you to fill in the real `WORKOS_AUTHKIT_DOMAIN` and a
+generated `TOKEN_ENCRYPTION_KEY`
+(`python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
+there, then:
 
 ```bash
 sudo systemctl restart ismiseeanna-mcp
 ```
 
-After the first successful login, remove `GARMIN_EMAIL`/`GARMIN_PASSWORD`
-from `/etc/ismiseeanna-mcp.env` and restart the service again.
+No `GARMIN_EMAIL`/`GARMIN_PASSWORD` here either - see "Connecting your
+Garmin account" below.
 
 To redeploy after pulling new commits:
 
@@ -323,7 +330,30 @@ authorization server from the server's metadata, register itself as a
 client, and walk you through logging in - after that the connector is
 available in any chat.
 
-### 4. Auto-deploy on merge to the GCP VM (optional)
+### 4. Connecting your Garmin account
+
+Hosted mode is multi-tenant: every person who adds the connector - including
+you - connects their own separate Garmin account, verified by their own
+claude.ai/WorkOS login. There's no deploy-time Garmin credential at all.
+
+From any chat with the connector enabled, ask Claude to run
+`start_garmin_connection`. It returns a one-time link, good for 15 minutes
+and usable once - **open it in your own browser, never paste your Garmin
+email or password into the chat itself** (that'd sit in claude.ai's own
+conversation history). The linked page posts your credentials straight to
+this server; if your account has MFA enabled it'll ask for the code as a
+second step. Every tool call after that resolves to your own Garmin data,
+kept completely separate from anyone else's.
+
+To disconnect later (revoking this server's access and deleting your stored
+session), ask Claude to run `disconnect_garmin_account`.
+
+Each connected user's session is encrypted at rest with `TOKEN_ENCRYPTION_KEY`
+(set once per deployment, not per user - see the env var table below for how
+to generate it). Losing that key means every connected user has to
+reconnect, so back it up somewhere durable, not just the one env file.
+
+### 5. Auto-deploy on merge to the GCP VM (optional)
 
 `.github/workflows/deploy.yml` redeploys the GCP option automatically after
 `CI` passes on `claude/garmin-mcp-server-b3sj3m` - the exact `git pull` +
@@ -422,8 +452,9 @@ a failed deploy.
 | `WORKOS_AUTHKIT_DOMAIN` | hosted mode | Your AuthKit project domain; also enables OAuth (unset = plain local stdio server) |
 | `MCP_RESOURCE_URL` | hosted mode | This deployment's public MCP URL; checked as the token audience |
 | `MCP_TRANSPORT` | hosted mode | Set to `streamable-http` (default `stdio`) |
-| `GARMINTOKENS` | optional | Where the Garmin session token is cached (default `~/.garminconnect`) |
-| `GARMIN_EMAIL` / `GARMIN_PASSWORD` | first login only | Not needed once a session token is cached |
+| `TOKEN_ENCRYPTION_KEY` | hosted mode | Encrypts every connected user's Garmin session at rest. Generate with `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `GARMINTOKENS` | optional | Root of the Garmin session token cache (default `~/.garminconnect`) - a flat file/dir in local mode, one encrypted subdirectory per user in hosted mode |
+| `GARMIN_EMAIL` / `GARMIN_PASSWORD` | local stdio mode only | Not used in hosted mode - see "Connecting your Garmin account" above. In local mode, only needed for the very first login |
 
 Both `WORKOS_AUTHKIT_DOMAIN` and `MCP_RESOURCE_URL` must be set together to
 enable OAuth - if either is missing, the server falls back to a plain,
