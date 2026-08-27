@@ -30,6 +30,29 @@ from .realignment import _week_range, build_weekly_check_in
 from .workout_builder import WorkoutBuilderError, build_running_workout
 
 
+# Sent to any connecting MCP client as server-level guidance (part of the
+# initialize response) - this is what lets Claude walk a brand-new hosted
+# user through connecting their own Garmin account on its own, without
+# needing a separately-maintained set of human instructions kept in sync.
+_HOSTED_INSTRUCTIONS = (
+    "This server gives access to the connected user's own Garmin Connect "
+    "data (activities, sleep, recovery, training plans, workout scheduling). "
+    "Each person who added this connector has their own separate Garmin "
+    "account, fully isolated from everyone else's.\n\n"
+    "If any tool call fails with a message about the Garmin account not "
+    "being connected yet, that means this specific user hasn't linked their "
+    "own Garmin account to this server - it's not an error to work around. "
+    "In that case, call start_garmin_connection and tell the user to open "
+    "the link it returns in their own browser. Make clear they should never "
+    "type their Garmin email or password directly into this chat - the link "
+    "takes them to this server's own page instead, specifically so their "
+    "password never sits in claude.ai's conversation history. If their "
+    "Garmin account has MFA enabled, that page will ask for the code as a "
+    "second step.\n\n"
+    "If a user wants to revoke access, call disconnect_garmin_account."
+)
+
+
 def _build_mcp() -> FastMCP:
     """Build the FastMCP instance, wiring in WorkOS AuthKit as the OAuth
     authorization server when configured.
@@ -57,6 +80,7 @@ def _build_mcp() -> FastMCP:
 
     return FastMCP(
         "ismiseeanna-garmin",
+        instructions=_HOSTED_INSTRUCTIONS,
         token_verifier=WorkOSTokenVerifier(authkit_domain, resource_url),
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(authkit_domain),
