@@ -11,12 +11,12 @@ dependencies = [
     "cryptography>=42.0.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
-    "anthropic>=0.40.0",
+    "workos>=10.0.0",
 ]
 
 [project.scripts]
 ismiseeanna-mcp = "ismiseeanna_mcp.server:main"
-ismiseeanna-api = "ismiseeanna_mcp.api:main"
+ismiseeanna-web = "ismiseeanna_mcp.web:main"
 
 [dependency-groups]
 dev = [

@@ -166,30 +166,27 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 Once a cached token exists at `~/.garminconnect`, the `env` block can be
 dropped.
 
-## HTTP backend
+## Dashboard website
 
-`ismiseeanna-api` runs a small HTTP API for a phone or browser client that
-can't speak this project's MCP stdio protocol directly - it wraps the same
-Garmin functions behind HTTP and runs the chat's Claude tool-use loop
-server-side.
+`ismiseeanna-web` (`src/ismiseeanna_mcp/web.py`) runs a separate, multi-user
+dashboard website - a read-only view of the same per-user Garmin data,
+for anyone who'd rather open a browser than ask Claude. No chat feature
+here: it's dashboard-only (today's Body Battery/Training Readiness/Sleep
+Score/resting HR/HRV plus 7-day trends, the weekly check-in, and plan
+progress), reusing `garmin_client.py`'s existing per-user session handling
+rather than a separate one - see the module docstring in `web.py` for how a
+plain website request resolves to the same per-user Garmin client the MCP
+tools use.
 
-```bash
-export GARMIN_UI_API_TOKEN="a long random shared secret"
-export ANTHROPIC_API_KEY="your-anthropic-api-key"
-uv run ismiseeanna-api   # serves on 0.0.0.0:8000
-```
-
-Every request needs `Authorization: Bearer $GARMIN_UI_API_TOKEN`.
-
-- `GET /status` — connection state, masked account, and which server is running
-- `GET /dashboard` — today + 7-day trend for Body Battery, Training Readiness, Sleep Score, resting HR, and HRV
-- `POST /chat` — `{"messages": [{"role": "user", "content": "..."}]}`, runs Claude (`claude-opus-5`) with the same tools listed above and returns `{"reply": "..."}`
-
-This binds to all interfaces so a phone on the same network/VPN can reach
-it — run it only on a trusted network (home LAN, Tailscale, etc.), never
-exposed directly to the internet. The dashboard's field extraction reads
-Garmin Connect's undocumented response shapes on a best-effort basis; spot
-check the numbers against the real Garmin Connect app after first setup.
+This only runs in hosted mode, alongside the MCP server, sharing its
+`WORKOS_AUTHKIT_DOMAIN` project and its encrypted token store (see
+"Relevant environment variables" below and the deploy steps under "Hosted
+deployment") - logging in via `/login` and connecting a Garmin account via
+`/connect-garmin` here reaches the *same* account already connected through
+claude.ai, and vice versa. It isn't meant to run standalone locally without
+a real WorkOS "regular web app" Application configured; the frontend
+(`frontend/`, a Vite + React SPA) proxies `/api`, `/login`, `/callback`,
+`/logout`, and `/connect*` to it during `npm run dev` - see `frontend/README.md`.
 
 ## Hosted deployment (remote access from claude.ai)
 
@@ -222,6 +219,13 @@ token was actually issued for *this* deployment before accepting it).
    your server's MCP endpoint URL (e.g. `https://<your-hostname>/mcp`) - it
    must exactly match `MCP_RESOURCE_URL` below, since that's what's checked
    as the token audience.
+5. For the dashboard website (optional - skip if you only want the MCP
+   connector): under **Applications**, create a new **regular web app**
+   Application, separate from the MCP connector's own auto-registered
+   client. Set its redirect URI to `https://app.<your-hostname>/callback`
+   (note the `app.` subdomain - see "Dashboard website" above). Note its
+   **Client ID** and generate an **API key** (Overview page) - these are
+   `WORKOS_CLIENT_ID` and `WORKOS_API_KEY` below.
 
 ### 2. Deploy
 
@@ -251,6 +255,10 @@ No `GARMIN_EMAIL`/`GARMIN_PASSWORD` here - in hosted mode, every person who
 adds this connector (including you) connects their own Garmin account
 through `start_garmin_connection` after logging in via claude.ai (see
 "Connecting your Garmin account" below), not a deploy-time secret.
+
+This option deploys the MCP server only - the dashboard website
+(`ismiseeanna-web`) isn't wired into `Dockerfile`/`fly.toml` as a second
+process. Use Option B below if you want both.
 
 </details>
 
@@ -290,8 +298,9 @@ echo "Hostname: $HOSTNAME"   # register this exact value as the WorkOS resource 
 
 Then SSH in (add `--tunnel-through-iap` if a direct SSH firewall rule isn't
 set up) and run the provisioning script (also in `deploy/gcp/`), which
-installs Caddy and `uv`, fetches the app, and sets up both as systemd
-services:
+installs Caddy and `uv`, fetches the app, and sets up the MCP server *and*
+the dashboard website (`ismiseeanna-mcp`/`ismiseeanna-web`) as two systemd
+services sharing that one checkout:
 
 ```bash
 gcloud compute ssh ismiseeanna-mcp --zone=us-central1-a
@@ -300,23 +309,27 @@ git clone --branch claude/garmin-mcp-server-b3sj3m https://github.com/EndaMurr/I
 sudo /tmp/setup/deploy/gcp/setup.sh "$HOSTNAME" claude/garmin-mcp-server-b3sj3m
 ```
 
-It writes `/etc/ismiseeanna-mcp.env` from `deploy/gcp/ismiseeanna-mcp.env.example`
-on first run and tells you to fill in the real `WORKOS_AUTHKIT_DOMAIN` and a
+It writes `/etc/ismiseeanna-mcp.env` and `/etc/ismiseeanna-web.env` (from
+the matching `.env.example` files) on first run and tells you to fill in
+the real `WORKOS_AUTHKIT_DOMAIN`/`WORKOS_API_KEY`/`WORKOS_CLIENT_ID` and a
 generated `TOKEN_ENCRYPTION_KEY`
 (`python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
-there, then:
+- **the same `TOKEN_ENCRYPTION_KEY` in both files**, since they share one
+token store - then:
 
 ```bash
-sudo systemctl restart ismiseeanna-mcp
+sudo systemctl restart ismiseeanna-mcp ismiseeanna-web
 ```
 
 No `GARMIN_EMAIL`/`GARMIN_PASSWORD` here either - see "Connecting your
-Garmin account" below.
+Garmin account" below. Only want the MCP connector, not the website? Leave
+`/etc/ismiseeanna-web.env` unedited and just don't start `ismiseeanna-web` -
+`ismiseeanna-mcp` doesn't depend on it.
 
 To redeploy after pulling new commits:
 
 ```bash
-gcloud compute ssh ismiseeanna-mcp --zone=us-central1-a --tunnel-through-iap --command="sudo -u ismiseeanna git -C /opt/ismiseeanna-mcp pull && cd /opt/ismiseeanna-mcp && sudo /root/.local/bin/uv sync --frozen && sudo chown -R ismiseeanna:ismiseeanna /opt/ismiseeanna-mcp/.venv && sudo systemctl restart ismiseeanna-mcp && sudo systemctl status ismiseeanna-mcp --no-pager"
+gcloud compute ssh ismiseeanna-mcp --zone=us-central1-a --tunnel-through-iap --command="sudo -u ismiseeanna git -C /opt/ismiseeanna-mcp pull && cd /opt/ismiseeanna-mcp && sudo /root/.local/bin/uv sync --frozen && sudo chown -R ismiseeanna:ismiseeanna /opt/ismiseeanna-mcp/.venv && sudo systemctl restart ismiseeanna-mcp ismiseeanna-web && sudo systemctl status ismiseeanna-mcp ismiseeanna-web --no-pager"
 ```
 
 </details>
@@ -345,8 +358,15 @@ this server; if your account has MFA enabled it'll ask for the code as a
 second step. Every tool call after that resolves to your own Garmin data,
 kept completely separate from anyone else's.
 
+If the dashboard website is deployed, connecting there works the same way -
+log in at `https://app.<your-hostname>/login`, then follow the "Connect
+Garmin" prompt. It's the same underlying connection either way: connect
+through claude.ai and the website shows the same account, and vice versa,
+with no need to reconnect on the second surface.
+
 To disconnect later (revoking this server's access and deleting your stored
-session), ask Claude to run `disconnect_garmin_account`.
+session), ask Claude to run `disconnect_garmin_account`, or use the
+website's disconnect option.
 
 Each connected user's session is encrypted at rest with `TOKEN_ENCRYPTION_KEY`
 (set once per deployment, not per user - see the env var table below for how
@@ -460,3 +480,16 @@ Both `WORKOS_AUTHKIT_DOMAIN` and `MCP_RESOURCE_URL` must be set together to
 enable OAuth - if either is missing, the server falls back to a plain,
 unauthenticated instance, which is fine for local stdio use but should never
 be exposed to the public internet.
+
+`ismiseeanna-web` (the dashboard website, `deploy/gcp/ismiseeanna-web.env.example`)
+takes its own set of variables, always required since it only runs in hosted
+mode:
+
+| Variable | Purpose |
+|---|---|
+| `HOME` | **Must be the exact same value as `ismiseeanna-mcp.env`'s** - both processes read/write the same per-user Garmin token store |
+| `TOKEN_ENCRYPTION_KEY` | **Must be the exact same value as `ismiseeanna-mcp.env`'s** - see above |
+| `WORKOS_API_KEY` / `WORKOS_CLIENT_ID` | The dashboard's own WorkOS "regular web app" Application - see step 5 under "Set up WorkOS AuthKit" above. Separate from the MCP connector's auto-registered client, same WorkOS project |
+| `WEB_REDIRECT_URI` | This deployment's `/callback` URL; must match the Application's configured redirect URI |
+| `WORKOS_COOKIE_PASSWORD` | Seals the session cookie. Generate with `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `WEB_HOST` / `PORT` | Bind address (default `127.0.0.1:8001`) - keep it off the public interface; Caddy reverse-proxies to it |
