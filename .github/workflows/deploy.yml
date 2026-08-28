@@ -47,10 +47,11 @@ jobs:
               cd /opt/ismiseeanna-mcp &&
               sudo /root/.local/bin/uv sync --frozen &&
               sudo chown -R ismiseeanna:ismiseeanna /opt/ismiseeanna-mcp/.venv &&
-              sudo systemctl restart ismiseeanna-mcp.service &&
+              sudo systemctl restart ismiseeanna-mcp.service ismiseeanna-web.service &&
               sleep 3 &&
-              sudo systemctl status ismiseeanna-mcp.service --no-pager -l &&
-              sudo systemctl is-active --quiet ismiseeanna-mcp.service
+              sudo systemctl status ismiseeanna-mcp.service ismiseeanna-web.service --no-pager -l &&
+              sudo systemctl is-active --quiet ismiseeanna-mcp.service &&
+              sudo systemctl is-active --quiet ismiseeanna-web.service
             "
 
       - name: Show recent service logs (on failure)
@@ -61,4 +62,4 @@ jobs:
             --project=garmin-mcp-505007 \
             --tunnel-through-iap \
             --quiet \
-            --command="sudo journalctl -u ismiseeanna-mcp.service -n 50 --no-pager"
+            --command="sudo journalctl -u ismiseeanna-mcp.service -u ismiseeanna-web.service -n 50 --no-pager"

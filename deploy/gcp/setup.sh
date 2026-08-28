@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# Provisions this Debian 12 VM to run the IsMiseEanna Garmin MCP server
-# behind Caddy (automatic HTTPS via Let's Encrypt) as a systemd service.
+# Provisions this Debian 12 VM to run the IsMiseEanna Garmin MCP server and
+# its dashboard website behind Caddy (automatic HTTPS via Let's Encrypt) as
+# two systemd services sharing one app checkout/venv.
 #
 # Run as root on a fresh VM:
 #   sudo ./setup.sh <public-hostname> [git-ref]
 #
-# <public-hostname> is what clients will connect to, e.g. an sslip.io
+# <public-hostname> is what MCP clients will connect to, e.g. an sslip.io
 # hostname derived from this VM's static external IP: 34.71.12.9 becomes
 # 34-71-12-9.sslip.io. It must match MCP_RESOURCE_URL and the resource
-# indicator registered in WorkOS.
+# indicator registered in WorkOS. The dashboard website is served from
+# app.<public-hostname> - any sslip.io subdomain resolves to the same VM, so
+# this needs no separate DNS/IP.
 #
-# Safe to re-run: it only creates /etc/ismiseeanna-mcp.env on the first run
-# (never overwrites a real, already-edited one), and otherwise just
-# re-syncs code/config and restarts services.
+# Safe to re-run: it only creates /etc/ismiseeanna-mcp.env and
+# /etc/ismiseeanna-web.env on the first run (never overwrites a real,
+# already-edited one), and otherwise just re-syncs code/config and restarts
+# services.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -40,6 +44,8 @@ APP_DIR=/opt/ismiseeanna-mcp
 DATA_DIR=/var/lib/ismiseeanna-mcp
 APP_USER=ismiseeanna
 ENV_FILE=/etc/ismiseeanna-mcp.env
+ENV_FILE_WEB=/etc/ismiseeanna-web.env
+APP_HOSTNAME="app.${HOSTNAME_ARG}"
 
 echo "==> Installing Caddy (reverse proxy + automatic HTTPS)"
 apt-get update -qq
@@ -98,12 +104,27 @@ else
   NEEDS_EDIT=0
 fi
 
-echo "==> Installing systemd service"
+if [ ! -f "$ENV_FILE_WEB" ]; then
+  echo "==> Writing $ENV_FILE_WEB (first run - fill in real WorkOS/encryption values before it can start)"
+  sed "s#REPLACE-WITH-YOUR-APP-HOSTNAME#${APP_HOSTNAME}#" \
+    "$APP_DIR/deploy/gcp/ismiseeanna-web.env.example" > "$ENV_FILE_WEB"
+  chmod 600 "$ENV_FILE_WEB"
+  NEEDS_EDIT_WEB=1
+else
+  echo "==> $ENV_FILE_WEB already exists, leaving it as-is"
+  NEEDS_EDIT_WEB=0
+fi
+
+echo "==> Installing systemd services"
 cp "$APP_DIR/deploy/gcp/ismiseeanna-mcp.service" /etc/systemd/system/ismiseeanna-mcp.service
+cp "$APP_DIR/deploy/gcp/ismiseeanna-web.service" /etc/systemd/system/ismiseeanna-web.service
 systemctl daemon-reload
-systemctl enable ismiseeanna-mcp
+systemctl enable ismiseeanna-mcp ismiseeanna-web
 if [ "$NEEDS_EDIT" -eq 0 ]; then
   systemctl restart ismiseeanna-mcp
+fi
+if [ "$NEEDS_EDIT_WEB" -eq 0 ]; then
+  systemctl restart ismiseeanna-web
 fi
 
 echo "==> Installing Caddy reverse proxy config"
@@ -111,10 +132,13 @@ sed "s#REPLACE-WITH-YOUR-HOSTNAME#${HOSTNAME_ARG}#" "$APP_DIR/deploy/gcp/Caddyfi
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
 echo
-if [ "$NEEDS_EDIT" -eq 1 ]; then
-  echo "==> Next step: edit $ENV_FILE with your real WORKOS_AUTHKIT_DOMAIN"
-  echo "    and a generated TOKEN_ENCRYPTION_KEY, then run:"
-  echo "      systemctl restart ismiseeanna-mcp"
+if [ "$NEEDS_EDIT" -eq 1 ] || [ "$NEEDS_EDIT_WEB" -eq 1 ]; then
+  echo "==> Next step: edit $ENV_FILE with your real WORKOS_AUTHKIT_DOMAIN and"
+  echo "    a generated TOKEN_ENCRYPTION_KEY, and $ENV_FILE_WEB with your"
+  echo "    WorkOS web-app credentials and a matching TOKEN_ENCRYPTION_KEY"
+  echo "    (must be the exact same key in both files), then run:"
+  echo "      systemctl restart ismiseeanna-mcp ismiseeanna-web"
 else
-  echo "==> Done. Server should be reachable at: https://${HOSTNAME_ARG}/mcp"
+  echo "==> Done. Server reachable at: https://${HOSTNAME_ARG}/mcp"
+  echo "    Dashboard reachable at: https://${APP_HOSTNAME}/"
 fi

@@ -27,3 +27,49 @@ jobs:
 
       - name: Test
         run: uv run pytest
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    # Contents write is only needed to commit the built dist/ back on a push
+    # to the deploy branch below - PRs and other branches just lint/build.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      # The VM never runs a Node toolchain (it's a memory-constrained
+      # e2-micro) - deploy.yml's `git pull` needs the built static files
+      # already in the repo, so commit them here whenever they change.
+      # dist/ is gitignored for local `npm run build` runs; force-add it
+      # just for this commit. The default GITHUB_TOKEN push below does not
+      # itself re-trigger this workflow (GitHub's built-in loop guard), so
+      # this can't recurse.
+      - name: Commit built frontend
+        if: github.event_name == 'push' && github.ref == 'refs/heads/claude/garmin-mcp-server-b3sj3m'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f frontend/dist
+          if git diff --cached --quiet; then
+            echo "No frontend changes to commit"
+          else
+            git commit -m "Rebuild frontend dist"
+            git push origin HEAD:${{ github.ref }}
+          fi

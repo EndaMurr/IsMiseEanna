@@ -5,3 +5,20 @@
 REPLACE-WITH-YOUR-HOSTNAME {
 	reverse_proxy 127.0.0.1:8000
 }
+
+# The dashboard website. Any subdomain of an sslip.io hostname resolves to
+# the same VM, so this needs no separate DNS/IP - just a second free Let's
+# Encrypt cert. Serves the CI-built SPA directly (frontend/dist, pulled in
+# by the same `git pull` that updates the MCP server); only the
+# server-rendered routes (JSON API, login/callback/logout, the Garmin-connect
+# flow) go to ismiseeanna-web.
+app.REPLACE-WITH-YOUR-HOSTNAME {
+	root * /opt/ismiseeanna-mcp/frontend/dist
+	encode gzip
+
+	@backend path /api/* /login /callback /logout /connect /connect/* /connect-garmin
+	reverse_proxy @backend 127.0.0.1:8001
+
+	try_files {path} /index.html
+	file_server
+}

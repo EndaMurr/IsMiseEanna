@@ -1,0 +1,26 @@
+[Unit]
+Description=IsMiseEanna dashboard website
+After=network.target
+
+[Service]
+Type=simple
+User=ismiseeanna
+Group=ismiseeanna
+WorkingDirectory=/opt/ismiseeanna-mcp
+EnvironmentFile=/etc/ismiseeanna-web.env
+ExecStart=/opt/ismiseeanna-mcp/.venv/bin/ismiseeanna-web
+Restart=on-failure
+RestartSec=5
+
+# Same repo checkout and venv as ismiseeanna-mcp.service (this is the same
+# git clone, just a second console script from the same package) - and the
+# same sandboxing, since this process reads/writes the identical per-user
+# Garmin token store under ReadWritePaths.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ismiseeanna-mcp
+
+[Install]
+WantedBy=multi-user.target
