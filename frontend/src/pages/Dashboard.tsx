@@ -1,8 +1,10 @@
 import { Clock, ListChecks, Route } from "lucide-react";
 import { ApiError, getDashboard } from "../api/client";
+import RacePredictions from "../components/RacePredictions";
 import RecentWorkouts from "../components/RecentWorkouts";
 import StatTile from "../components/StatTile";
 import type { StatDelta } from "../components/StatTile";
+import TrainingStatusCard from "../components/TrainingStatusCard";
 import { BatteryIcon, GaugeIcon, MoonIcon, HeartPulseIcon, WaveIcon } from "../components/icons";
 import { useAsync } from "../hooks/useAsync";
 import ConnectPrompt from "./ConnectPrompt";
@@ -137,6 +139,8 @@ export default function Dashboard() {
           </div>
         </>
       )}
+      {data.trainingStatus && <TrainingStatusCard status={data.trainingStatus} />}
+      {data.racePredictions && <RacePredictions predictions={data.racePredictions} />}
     </>
   );
 }

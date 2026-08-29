@@ -10,8 +10,11 @@ from ismiseeanna_mcp import garmin_client
 from ismiseeanna_mcp.garmin_client import (
     GarminClientError,
     GarminNotConnectedError,
+    _humanize_status_phrase,
     _resolve_token_store,
+    summarize_race_predictions,
     summarize_training_load,
+    summarize_training_status,
 )
 
 
@@ -315,3 +318,72 @@ def test_summarize_training_load_ignores_activities_with_no_parseable_date():
     result = summarize_training_load(activities, today=today)
 
     assert result["thisWeek"] == {"durationSeconds": 0, "runningDistanceMeters": 0, "workoutCount": 0}
+
+
+def test_summarize_race_predictions_extracts_the_four_times():
+    raw = {
+        "userId": 81090812,
+        "calendarDate": "2026-08-29",
+        "time5K": 1227,
+        "time10K": 2579,
+        "timeHalfMarathon": 5651,
+        "timeMarathon": 12496,
+    }
+
+    assert summarize_race_predictions(raw) == {
+        "time5K": 1227,
+        "time10K": 2579,
+        "timeHalfMarathon": 5651,
+        "timeMarathon": 12496,
+    }
+
+
+def test_summarize_race_predictions_handles_missing_fields():
+    assert summarize_race_predictions({}) == {
+        "time5K": None,
+        "time10K": None,
+        "timeHalfMarathon": None,
+        "timeMarathon": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "phrase, expected",
+    [
+        ("RECOVERY_2", "Recovery"),
+        ("OVERREACHING", "Overreaching"),
+        ("PRODUCTIVE_1", "Productive"),
+        ("NO_STATUS", "No Status"),
+    ],
+)
+def test_humanize_status_phrase(phrase, expected):
+    assert _humanize_status_phrase(phrase) == expected
+
+
+def test_summarize_training_status_picks_primary_device_and_vo2max():
+    raw = {
+        "mostRecentVO2Max": {"generic": {"vo2MaxValue": 51.0}},
+        "mostRecentTrainingStatus": {
+            "latestTrainingStatusData": {
+                "111": {"trainingStatusFeedbackPhrase": "DETRAINING", "primaryTrainingDevice": False},
+                "222": {"trainingStatusFeedbackPhrase": "RECOVERY_2", "primaryTrainingDevice": True},
+            }
+        },
+    }
+
+    assert summarize_training_status(raw) == {"label": "Recovery", "vo2Max": 51.0}
+
+
+def test_summarize_training_status_falls_back_without_a_marked_primary_device():
+    raw = {
+        "mostRecentVO2Max": None,
+        "mostRecentTrainingStatus": {
+            "latestTrainingStatusData": {"111": {"trainingStatusFeedbackPhrase": "PRODUCTIVE"}}
+        },
+    }
+
+    assert summarize_training_status(raw) == {"label": "Productive", "vo2Max": None}
+
+
+def test_summarize_training_status_handles_completely_missing_data():
+    assert summarize_training_status({}) == {"label": None, "vo2Max": None}

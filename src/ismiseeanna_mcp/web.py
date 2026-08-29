@@ -46,7 +46,9 @@ from .garmin_client import (
     disconnect_user,
     get_client,
     summarize_activity,
+    summarize_race_predictions,
     summarize_training_load,
+    summarize_training_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -317,6 +319,18 @@ def api_dashboard() -> dict:
         logger.exception("Failed to fetch training load for dashboard")
         training_load = None
 
+    try:
+        race_predictions = summarize_race_predictions(client.get_race_predictions())
+    except Exception:
+        logger.exception("Failed to fetch race predictions for dashboard")
+        race_predictions = None
+
+    try:
+        training_status = summarize_training_status(client.get_training_status(date.today().isoformat()))
+    except Exception:
+        logger.exception("Failed to fetch training status for dashboard")
+        training_status = None
+
     return {
         "today": {
             "bodyBattery": body_battery[-1],
@@ -334,6 +348,8 @@ def api_dashboard() -> dict:
         },
         "recentActivities": recent_activities,
         "trainingLoad": training_load,
+        "racePredictions": race_predictions,
+        "trainingStatus": training_status,
     }
 
 

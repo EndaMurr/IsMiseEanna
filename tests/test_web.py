@@ -39,6 +39,15 @@ def fake_garmin_client(monkeypatch):
     fake = MagicMock()
     monkeypatch.setattr(web, "get_client", lambda: fake)
     monkeypatch.setattr(server, "get_client", lambda: fake)
+    # api_dashboard calls these unconditionally now - a bare MagicMock
+    # return value isn't a real dict, so summarize_race_predictions/
+    # summarize_training_status's .get() calls would return more MagicMocks
+    # instead of None, which then fails to JSON-serialize and 500s the
+    # whole endpoint. Default to an empty dict (which those summarizers
+    # already handle, returning all-None fields) so tests that don't care
+    # about these two fields aren't broken by them.
+    fake.get_race_predictions.return_value = {}
+    fake.get_training_status.return_value = {}
     return fake
 
 
@@ -207,6 +216,53 @@ def test_api_dashboard_tolerates_training_load_fetch_failure(logged_in_client, f
 
     assert response.status_code == 200
     assert response.json()["trainingLoad"] is None
+
+
+def test_api_dashboard_includes_race_predictions_and_training_status(
+    logged_in_client, fake_garmin_client
+):
+    fake_garmin_client.get_activities.return_value = []
+    fake_garmin_client.get_race_predictions.return_value = {
+        "time5K": 1227,
+        "time10K": 2579,
+        "timeHalfMarathon": 5651,
+        "timeMarathon": 12496,
+    }
+    fake_garmin_client.get_training_status.return_value = {
+        "mostRecentVO2Max": {"generic": {"vo2MaxValue": 51.0}},
+        "mostRecentTrainingStatus": {
+            "latestTrainingStatusData": {
+                "222": {"trainingStatusFeedbackPhrase": "RECOVERY_2", "primaryTrainingDevice": True}
+            }
+        },
+    }
+
+    response = logged_in_client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["racePredictions"] == {
+        "time5K": 1227,
+        "time10K": 2579,
+        "timeHalfMarathon": 5651,
+        "timeMarathon": 12496,
+    }
+    assert body["trainingStatus"] == {"label": "Recovery", "vo2Max": 51.0}
+
+
+def test_api_dashboard_tolerates_race_predictions_and_training_status_fetch_failure(
+    logged_in_client, fake_garmin_client
+):
+    fake_garmin_client.get_activities.return_value = []
+    fake_garmin_client.get_race_predictions.side_effect = RuntimeError("boom")
+    fake_garmin_client.get_training_status.side_effect = RuntimeError("boom")
+
+    response = logged_in_client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["racePredictions"] is None
+    assert body["trainingStatus"] is None
 
 
 def test_api_weekly_check_in_resolves_the_logged_in_users_garmin_client(
