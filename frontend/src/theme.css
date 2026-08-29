@@ -141,8 +141,18 @@ body {
   padding: 0 20px;
 }
 
-a {
-  color: var(--brand);
+/* @layer base, not a bare rule: unlayered CSS always beats Tailwind's own
+ * layers regardless of specificity, so a bare `a{}` here would silently
+ * override every text-color utility applied to an anchor (e.g. the nav
+ * links' text-muted-foreground). Base still loses to any utility class an
+ * anchor actually carries. :not([data-slot="button"]) additionally excludes
+ * anchors rendered as a shadcn Button (e.g. the "Log out" link) - those
+ * should read as buttons, not as branded links, even in their resting
+ * state where the button variant itself supplies no explicit text color. */
+@layer base {
+  a:not([data-slot="button"]) {
+    color: var(--brand);
+  }
 }
 
 button {
