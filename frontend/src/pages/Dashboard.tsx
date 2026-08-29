@@ -1,5 +1,4 @@
 import { ApiError, getDashboard } from "../api/client";
-import PersonalRecords from "../components/PersonalRecords";
 import RecentWorkouts from "../components/RecentWorkouts";
 import StatTile from "../components/StatTile";
 import { BatteryIcon, GaugeIcon, MoonIcon, HeartPulseIcon, WaveIcon } from "../components/icons";
@@ -87,7 +86,6 @@ export default function Dashboard() {
         ))}
       </div>
       <RecentWorkouts activities={data.recentActivities} />
-      <PersonalRecords records={data.personalRecords} />
     </>
   );
 }

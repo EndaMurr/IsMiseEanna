@@ -57,20 +57,10 @@ export interface ActivitySummary {
   averageHR: number | null;
 }
 
-export interface PersonalRecord {
-  label: string;
-  /** "time" values are seconds; "distance" values are meters. */
-  kind: "time" | "distance";
-  value: number;
-  activityName: string | null;
-  date: string | null;
-}
-
 export interface DashboardResponse {
   today: DashboardMetrics;
   trends: DashboardTrends;
   recentActivities: ActivitySummary[];
-  personalRecords: PersonalRecord[];
 }
 
 export interface SessionItem {
