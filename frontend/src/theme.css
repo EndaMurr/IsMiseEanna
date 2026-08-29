@@ -23,6 +23,7 @@
   --brand-muted: #9ec5f4;
   --good: #0ca30c;
   --critical: #d03b3b;
+  --warning: #fab219;
   /* Distinct from --good: that's the status-dot step (>=3:1 as a small
    * mark); a delta reads as body text, which needs its own darker step to
    * hold contrast at that size - see the dataviz skill's "Chart chrome &
@@ -89,6 +90,7 @@
     --brand-muted: #184f95;
     --good: #0ca30c;
     --critical: #e66767;
+    --warning: #fab219;
     --delta-good: #0ca30c;
     --series-1: #3987e5;
     --series-2: #d95926;
@@ -113,6 +115,7 @@
   --brand-muted: #184f95;
   --good: #0ca30c;
   --critical: #e66767;
+  --warning: #fab219;
   --delta-good: #0ca30c;
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -200,14 +203,6 @@ li {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
-}
-
-.stat-tile-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 
 .trend-chart-wrap {
