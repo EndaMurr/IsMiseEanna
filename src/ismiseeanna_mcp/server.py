@@ -425,9 +425,13 @@ def get_weekly_check_in() -> dict:
     week_start, week_end = _week_range()
     scheduled = _fetch_scheduled_for_week(week_start, week_end)
 
+    # No activity-type filter: the calendar this compares against can (and
+    # regularly does) schedule non-running sessions too - a "Strength" day
+    # would never be found as completed if this only fetched running
+    # activities, showing a real completed session as missed instead.
     activities = _call_client(
         lambda: get_client().get_activities_by_date(
-            week_start.isoformat(), week_end.isoformat(), "running"
+            week_start.isoformat(), week_end.isoformat(), None
         )
     )
     completed = [summarize_activity(a) for a in activities]

@@ -368,9 +368,7 @@ def test_get_weekly_check_in_gathers_calendar_activity_and_recovery_data(
     result = server.get_weekly_check_in()
 
     fake_client.get_scheduled_workouts.assert_called_once_with(2026, 8)
-    fake_client.get_activities_by_date.assert_called_once_with(
-        "2026-08-10", "2026-08-16", "running"
-    )
+    fake_client.get_activities_by_date.assert_called_once_with("2026-08-10", "2026-08-16", None)
     assert result["weekStart"] == "2026-08-10"
     assert result["weekEnd"] == "2026-08-16"
     assert result["recoveryTrend"]["trainingReadiness"] == [65] * 7
@@ -379,6 +377,45 @@ def test_get_weekly_check_in_gathers_calendar_activity_and_recovery_data(
         {"date": "2026-08-11", "name": "Tempo Run", "scheduledWorkoutId": 555, "workoutId": 999}
     ]
     assert result["sessionsMissed"] == []
+
+
+def test_get_weekly_check_in_counts_a_completed_non_running_session(fake_client, monkeypatch):
+    """Regression test: get_activities_by_date used to be called with
+    activity_type="running", so a real completed Strength session never
+    showed up in `completed` and a scheduled "Strength" day always read as
+    missed even when it happened exactly on schedule."""
+    import datetime as dt
+
+    from ismiseeanna_mcp import realignment as realignment_module
+
+    class _FixedDate(dt.date):
+        @classmethod
+        def today(cls):
+            return dt.date(2026, 8, 16)
+
+    monkeypatch.setattr(realignment_module, "date", _FixedDate)
+
+    fake_client.get_scheduled_workouts.return_value = {
+        "calendarItems": [{"date": "2026-08-11", "title": "Strength", "id": 1, "workoutId": 2}]
+    }
+    fake_client.get_activities_by_date.return_value = [
+        {
+            "activityId": 1,
+            "activityName": "Strength",
+            "activityType": {"typeKey": "strength_training"},
+            "startTimeLocal": "2026-08-11 08:01:37",
+        }
+    ]
+    fake_client.get_training_readiness.return_value = None
+    fake_client.get_hrv_data.return_value = None
+
+    result = server.get_weekly_check_in()
+
+    fake_client.get_activities_by_date.assert_called_once_with("2026-08-10", "2026-08-16", None)
+    assert result["sessionsMissed"] == []
+    assert result["sessionsCompleted"] == [
+        {"date": "2026-08-11", "name": "Strength", "scheduledWorkoutId": 1, "workoutId": 2}
+    ]
 
 
 def _patch_fixed_today(monkeypatch, fixed):
