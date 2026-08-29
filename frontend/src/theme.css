@@ -260,7 +260,9 @@ h3 {
   bottom: 100%;
   left: 0;
   transform: translateX(-50%);
-  margin-bottom: 6px;
+  /* margin-bottom is set inline (TrendChart's tooltipOffset prop) - callers
+   * with a delta badge directly above the chart need more clearance than
+   * callers with nothing there, so there's no one static value here. */
   background: var(--text-primary);
   color: var(--surface-1);
   font-size: 11px;
