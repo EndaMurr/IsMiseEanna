@@ -315,3 +315,61 @@ def _n_day_trend(fetch_day, extract, days: int = 7, end: date | None = None) -> 
         except Exception:
             values.append(None)
     return values
+
+
+def summarize_activity(activity: dict) -> dict:
+    """Reduce a raw get_activities()/get_activities_by_date() entry to the
+    fields the dashboard and MCP tools both need. Shared here (rather than
+    living in server.py, which only server.py used to import) since web.py
+    needs the exact same shape for the dashboard's "recent workouts" list."""
+    return {
+        "activityId": activity.get("activityId"),
+        "name": activity.get("activityName"),
+        "type": (activity.get("activityType") or {}).get("typeKey"),
+        "startTimeLocal": activity.get("startTimeLocal"),
+        "distanceMeters": activity.get("distance"),
+        "durationSeconds": activity.get("duration"),
+        "calories": activity.get("calories"),
+        "averageHR": activity.get("averageHR"),
+    }
+
+
+# get_personal_record()'s typeId isn't documented anywhere in Garmin
+# Connect's API - this mapping is inferred from one real account's values
+# (5K/10K/half/marathon times increase monotonically as expected, and
+# typeId 7's value lands almost exactly on marathon distance), not from an
+# official spec. Only the categories a running dashboard cares about and
+# can label with confidence; deliberately excludes typeIds whose unit
+# wasn't unambiguous from the sample (steps/cycling/strength ones, etc.) -
+# spot-check against a real account before adding to this list.
+_PERSONAL_RECORD_TYPES: dict[int, tuple[str, str]] = {
+    3: ("5K", "time"),
+    4: ("10K", "time"),
+    5: ("Half marathon", "time"),
+    6: ("Marathon", "time"),
+    7: ("Longest run", "distance"),
+}
+
+
+def summarize_personal_records(records: list[dict]) -> list[dict]:
+    """Reduce get_personal_record()'s full list (which includes cycling,
+    step-count, and other records this dashboard doesn't show) down to the
+    running categories in _PERSONAL_RECORD_TYPES, in that fixed display
+    order - regardless of the order Garmin Connect returns them in."""
+    by_type = {r.get("typeId"): r for r in records}
+    summarized = []
+    for type_id, (label, kind) in _PERSONAL_RECORD_TYPES.items():
+        record = by_type.get(type_id)
+        if record is None or record.get("value") is None:
+            continue
+        summarized.append(
+            {
+                "label": label,
+                "kind": kind,
+                "value": record.get("value"),
+                "activityName": record.get("activityName"),
+                "date": record.get("activityStartDateTimeLocalFormatted")
+                or record.get("prStartTimeGmtFormatted"),
+            }
+        )
+    return summarized

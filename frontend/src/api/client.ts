@@ -46,9 +46,31 @@ export interface DashboardTrends {
   hrv: (number | null)[];
 }
 
+export interface ActivitySummary {
+  activityId: number | null;
+  name: string | null;
+  type: string | null;
+  startTimeLocal: string | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  calories: number | null;
+  averageHR: number | null;
+}
+
+export interface PersonalRecord {
+  label: string;
+  /** "time" values are seconds; "distance" values are meters. */
+  kind: "time" | "distance";
+  value: number;
+  activityName: string | null;
+  date: string | null;
+}
+
 export interface DashboardResponse {
   today: DashboardMetrics;
   trends: DashboardTrends;
+  recentActivities: ActivitySummary[];
+  personalRecords: PersonalRecord[];
 }
 
 export interface SessionItem {

@@ -3,8 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ismiseeanna_mcp import server
-from ismiseeanna_mcp.garmin_client import GarminClientError, GarminNotConnectedError
-from ismiseeanna_mcp.server import _summarize
+from ismiseeanna_mcp.garmin_client import GarminClientError, GarminNotConnectedError, summarize_activity
 
 
 @pytest.fixture
@@ -144,7 +143,7 @@ def test_summarize_full_activity():
         "calories": 350,
         "averageHR": 145,
     }
-    assert _summarize(activity) == {
+    assert summarize_activity(activity) == {
         "activityId": 123,
         "name": "Morning Run",
         "type": "running",
@@ -157,7 +156,7 @@ def test_summarize_full_activity():
 
 
 def test_summarize_handles_missing_fields():
-    assert _summarize({}) == {
+    assert summarize_activity({}) == {
         "activityId": None,
         "name": None,
         "type": None,

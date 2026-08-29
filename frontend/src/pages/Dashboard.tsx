@@ -1,4 +1,6 @@
 import { ApiError, getDashboard } from "../api/client";
+import PersonalRecords from "../components/PersonalRecords";
+import RecentWorkouts from "../components/RecentWorkouts";
 import StatTile from "../components/StatTile";
 import { BatteryIcon, GaugeIcon, MoonIcon, HeartPulseIcon, WaveIcon } from "../components/icons";
 import { useAsync } from "../hooks/useAsync";
@@ -69,19 +71,23 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="tile-grid">
-      {tiles.map((tile) => (
-        <StatTile
-          key={tile.label}
-          label={tile.label}
-          value={tile.value}
-          trend={tile.trend}
-          unit={tile.unit}
-          goodDirection={tile.goodDirection}
-          icon={tile.icon}
-          accentVar={tile.accentVar}
-        />
-      ))}
-    </div>
+    <>
+      <div className="tile-grid">
+        {tiles.map((tile) => (
+          <StatTile
+            key={tile.label}
+            label={tile.label}
+            value={tile.value}
+            trend={tile.trend}
+            unit={tile.unit}
+            goodDirection={tile.goodDirection}
+            icon={tile.icon}
+            accentVar={tile.accentVar}
+          />
+        ))}
+      </div>
+      <RecentWorkouts activities={data.recentActivities} />
+      <PersonalRecords records={data.personalRecords} />
+    </>
   );
 }

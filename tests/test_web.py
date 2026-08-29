@@ -115,6 +115,86 @@ def test_api_dashboard_extracts_today_and_trend(logged_in_client, fake_garmin_cl
     assert len(body["trends"]["bodyBattery"]) == 7
 
 
+def test_api_dashboard_includes_recent_activities_and_personal_records(
+    logged_in_client, fake_garmin_client
+):
+    fake_garmin_client.get_body_battery.return_value = None
+    fake_garmin_client.get_training_readiness.return_value = None
+    fake_garmin_client.get_sleep_data.return_value = None
+    fake_garmin_client.get_rhr_day.return_value = None
+    fake_garmin_client.get_hrv_data.return_value = None
+    fake_garmin_client.get_activities.return_value = [
+        {
+            "activityId": 1,
+            "activityName": "Easy Run",
+            "activityType": {"typeKey": "running"},
+            "startTimeLocal": "2026-08-23 09:58:40",
+            "distance": 8021.5,
+            "duration": 2868.5,
+            "calories": 644,
+            "averageHR": 132,
+        }
+    ]
+    fake_garmin_client.get_personal_record.return_value = [
+        {
+            "typeId": 3,
+            "value": 1219.1,
+            "activityName": "5K race",
+            "activityStartDateTimeLocalFormatted": "2022-09-06T19:36:10.0",
+        },
+        # Not in the supported category list (cycling power, not a running
+        # PR this dashboard shows) - should be silently dropped.
+        {"typeId": 9, "value": 215.0, "activityName": "Ride"},
+    ]
+
+    response = logged_in_client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recentActivities"] == [
+        {
+            "activityId": 1,
+            "name": "Easy Run",
+            "type": "running",
+            "startTimeLocal": "2026-08-23 09:58:40",
+            "distanceMeters": 8021.5,
+            "durationSeconds": 2868.5,
+            "calories": 644,
+            "averageHR": 132,
+        }
+    ]
+    assert body["personalRecords"] == [
+        {
+            "label": "5K",
+            "kind": "time",
+            "value": 1219.1,
+            "activityName": "5K race",
+            "date": "2022-09-06T19:36:10.0",
+        }
+    ]
+
+
+def test_api_dashboard_tolerates_activity_and_pr_fetch_failures(
+    logged_in_client, fake_garmin_client
+):
+    fake_garmin_client.get_body_battery.return_value = None
+    fake_garmin_client.get_training_readiness.return_value = None
+    fake_garmin_client.get_sleep_data.return_value = None
+    fake_garmin_client.get_rhr_day.return_value = None
+    fake_garmin_client.get_hrv_data.return_value = None
+    fake_garmin_client.get_activities.side_effect = RuntimeError("boom")
+    fake_garmin_client.get_personal_record.side_effect = RuntimeError("boom")
+
+    response = logged_in_client.get("/api/dashboard")
+
+    # A hiccup fetching workouts/records shouldn't 500 the whole dashboard -
+    # the wellness tiles (today/trends) still come back fine.
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recentActivities"] == []
+    assert body["personalRecords"] == []
+
+
 def test_api_weekly_check_in_resolves_the_logged_in_users_garmin_client(
     logged_in_client, fake_garmin_client
 ):
