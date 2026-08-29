@@ -23,6 +23,7 @@ from .garmin_client import (
     _n_day_trend,
     disconnect_user,
     get_client,
+    summarize_activity,
 )
 from .plan_generator import generate_marathon_plan as _generate_marathon_plan
 from .plan_progress import build_plan_progress as _build_plan_progress
@@ -140,19 +141,6 @@ def _call_client(fn: Callable[[], T]) -> T:
         raise RuntimeError(f"Garmin Connect request failed ({type(e).__name__}).") from e
 
 
-def _summarize(activity: dict) -> dict:
-    return {
-        "activityId": activity.get("activityId"),
-        "name": activity.get("activityName"),
-        "type": (activity.get("activityType") or {}).get("typeKey"),
-        "startTimeLocal": activity.get("startTimeLocal"),
-        "distanceMeters": activity.get("distance"),
-        "durationSeconds": activity.get("duration"),
-        "calories": activity.get("calories"),
-        "averageHR": activity.get("averageHR"),
-    }
-
-
 def _estimate_recovery_pace_min_per_km() -> tuple[float, float] | None:
     """Estimate an easy/recovery pace range from recent running history.
 
@@ -256,7 +244,7 @@ def _fill_easy_pace_defaults(steps: list[dict]) -> list[dict]:
 def list_activities(limit: int = 20, start: int = 0) -> list[dict]:
     """List recent Garmin activities, most recent first, with basic summary info."""
     activities = _call_client(lambda: get_client().get_activities(start, limit))
-    return [_summarize(a) for a in activities]
+    return [summarize_activity(a) for a in activities]
 
 
 @mcp.tool()
@@ -267,7 +255,7 @@ def search_activities_by_date(
     activities = _call_client(
         lambda: get_client().get_activities_by_date(start_date, end_date, activity_type)
     )
-    return [_summarize(a) for a in activities]
+    return [summarize_activity(a) for a in activities]
 
 
 @mcp.tool()
@@ -442,7 +430,7 @@ def get_weekly_check_in() -> dict:
             week_start.isoformat(), week_end.isoformat(), "running"
         )
     )
-    completed = [_summarize(a) for a in activities]
+    completed = [summarize_activity(a) for a in activities]
 
     recovery_trend = {
         "trainingReadiness": _n_day_trend(

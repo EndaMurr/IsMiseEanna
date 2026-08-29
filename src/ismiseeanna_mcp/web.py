@@ -44,6 +44,8 @@ from .garmin_client import (
     _user_token_path,
     disconnect_user,
     get_client,
+    summarize_activity,
+    summarize_personal_records,
 )
 
 logger = logging.getLogger(__name__)
@@ -296,6 +298,20 @@ def api_dashboard() -> dict:
     resting_hr = _n_day_trend(client.get_rhr_day, _extract_resting_heart_rate)
     hrv = _n_day_trend(client.get_hrv_data, _extract_hrv)
 
+    # Best-effort, same spirit as _n_day_trend above: a hiccup fetching
+    # workouts or records shouldn't blank out the wellness tiles, which
+    # already succeeded by this point.
+    try:
+        recent_activities = [summarize_activity(a) for a in client.get_activities(0, 5)]
+    except Exception:
+        logger.exception("Failed to fetch recent activities for dashboard")
+        recent_activities = []
+    try:
+        personal_records = summarize_personal_records(client.get_personal_record())
+    except Exception:
+        logger.exception("Failed to fetch personal records for dashboard")
+        personal_records = []
+
     return {
         "today": {
             "bodyBattery": body_battery[-1],
@@ -311,6 +327,8 @@ def api_dashboard() -> dict:
             "restingHeartRate": resting_hr,
             "hrv": hrv,
         },
+        "recentActivities": recent_activities,
+        "personalRecords": personal_records,
     }
 
 
