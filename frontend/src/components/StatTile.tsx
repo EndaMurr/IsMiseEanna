@@ -1,4 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import TrendChart from "./TrendChart";
 
 interface StatTileProps {
@@ -12,9 +15,9 @@ interface StatTileProps {
    * one that isn't. Drives the delta's color. */
   goodDirection?: "up" | "down";
   /** A fixed per-metric identity icon + color (a categorical palette slot,
-   * assigned in order across the tiles - never reused as a magnitude or
-   * status signal). Always paired with the label text beside it, so
-   * identity never rides on color/icon alone. */
+   * assigned in order - never reused as a magnitude or status signal).
+   * Always paired with the label text beside it, so identity never rides
+   * on color/icon alone. */
   icon?: ComponentType<SVGProps<SVGSVGElement>>;
   accentVar?: string;
 }
@@ -62,29 +65,46 @@ export default function StatTile({
   }
 
   return (
-    <div className="card stat-tile">
-      <div className="stat-tile-label">
-        {Icon && (
-          <span className="stat-tile-icon" style={accentVar ? { color: accentVar } : undefined}>
-            <Icon />
+    <Card className="gap-3">
+      <CardHeader>
+        <CardDescription className="flex items-center gap-1.5">
+          {Icon && (
+            <span className="inline-flex shrink-0" style={accentVar ? { color: accentVar } : undefined}>
+              <Icon />
+            </span>
+          )}
+          {label}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <div className="flex items-baseline gap-1">
+          <span
+            className={cn(
+              "font-heading text-3xl leading-none font-semibold",
+              value === null && "text-muted-foreground font-normal",
+            )}
+          >
+            {formatValue(value)}
           </span>
-        )}
-        {label}
-      </div>
-      <div className="stat-tile-value-row">
-        <span className={value === null ? "stat-tile-value stat-tile-value-empty" : "stat-tile-value"}>
-          {formatValue(value)}
-        </span>
-        {value !== null && unit && <span className="stat-tile-unit">{unit}</span>}
-      </div>
-      {value === null && <div className="stat-tile-empty">Not synced yet</div>}
-      {delta && (
-        <div className={`stat-tile-delta stat-tile-delta-${delta.sentiment}`}>
-          {delta.amount === 0 ? "No change" : `${delta.amount > 0 ? "▲" : "▼"} ${Math.abs(delta.amount)}`} vs{" "}
-          {delta.periodLabel}
+          {value !== null && unit && <span className="text-muted-foreground text-sm">{unit}</span>}
         </div>
-      )}
-      {hasTrend && <TrendChart values={trend!} width={80} height={24} />}
-    </div>
+        {value === null && <p className="text-muted-foreground text-xs">Not synced yet</p>}
+        {delta && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "w-fit font-normal",
+              delta.sentiment === "good" && "text-[var(--delta-good)]",
+              delta.sentiment === "bad" && "text-[var(--critical)]",
+              delta.sentiment === "neutral" && "text-muted-foreground",
+            )}
+          >
+            {delta.amount === 0 ? "No change" : `${delta.amount > 0 ? "▲" : "▼"} ${Math.abs(delta.amount)}`} vs{" "}
+            {delta.periodLabel}
+          </Badge>
+        )}
+        {hasTrend && <TrendChart values={trend!} width={80} height={24} />}
+      </CardContent>
+    </Card>
   );
 }
