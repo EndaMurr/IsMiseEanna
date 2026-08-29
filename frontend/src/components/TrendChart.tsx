@@ -145,14 +145,14 @@ export default function TrendChart({ values, width = 80, height = 24 }: TrendCha
           />
         )}
         {(hoverI === null || hoverI !== lastIndex) && (
-          <circle cx={last.x} cy={last.y} r={4} fill="var(--accent)" stroke="var(--surface-1)" strokeWidth={2} />
+          <circle cx={last.x} cy={last.y} r={4} fill="var(--brand)" stroke="var(--surface-1)" strokeWidth={2} />
         )}
         {hoverPoint && (
           <circle
             cx={toXY(hoverPoint).x}
             cy={toXY(hoverPoint).y}
             r={4}
-            fill="var(--accent)"
+            fill="var(--brand)"
             stroke="var(--surface-1)"
             strokeWidth={2}
           />
