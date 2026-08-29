@@ -91,6 +91,43 @@
     --series-3: #199e70;
     --series-4: #c98500;
     --series-5: #d55181;
+    /* shadcn's own semantic tokens - normally only set under a `.dark`
+     * class (Tailwind's default dark variant target), but nothing in this
+     * app ever adds that class. Mirrored here so shadcn-based components
+     * (Card, Button, Badge, etc.) actually track this app's own dark-mode
+     * trigger instead of staying stuck on their light values regardless of
+     * OS preference. --border is deliberately not repeated - this app's
+     * own value above already covers it. */
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
     color-scheme: dark;
   }
 }
@@ -115,6 +152,39 @@
   --series-3: #199e70;
   --series-4: #c98500;
   --series-5: #d55181;
+  /* See the matching comment in the media-query block above - mirrors
+   * shadcn's .dark class tokens here too, since this attribute is this
+   * app's other (manual-toggle) dark-mode trigger. */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
   color-scheme: dark;
 }
 
@@ -245,6 +315,13 @@ h3 {
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Currently unreachable - nothing in this app adds a `.dark` class to
+ * anything, since dark mode here is prefers-color-scheme/data-theme
+ * driven (see those blocks above, which now carry the same values this
+ * class does). Left in place rather than removed: it's shadcn's own
+ * generated convention, and a future manual light/dark toggle built the
+ * conventional way (add/remove `.dark` on <html>) would just work by
+ * landing on these same values with zero changes needed here. */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
