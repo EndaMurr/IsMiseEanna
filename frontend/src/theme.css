@@ -257,19 +257,27 @@ h3 {
 
 .trend-tooltip {
   position: absolute;
-  bottom: 100%;
-  left: 0;
-  transform: translateX(-50%);
-  /* margin-bottom is set inline (TrendChart's tooltipOffset prop) - callers
-   * with a delta badge directly above the chart need more clearance than
-   * callers with nothing there, so there's no one static value here. */
+  /* Beside the chart, not above it: a stat tile stacks label/value/delta
+   * badge directly above the chart with barely any gap between them (see
+   * StatTile.tsx), so there's no vertical position above the chart that
+   * both clears that stack *and* is close enough to read as attached to
+   * it - any offset large enough to jump the badge is also large enough
+   * to land back inside the value row above it. The chart's own row,
+   * though, has real empty space to its right in every card this appears
+   * in (the chart is 80px wide in a >=180px card) that nothing else
+   * occupies, so anchoring there can't collide with a sibling regardless
+   * of which point is hovered. */
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  max-width: 90px;
   background: var(--text-primary);
   color: var(--surface-1);
   font-size: 11px;
   line-height: 1.4;
   padding: 3px 6px;
   border-radius: 4px;
-  white-space: nowrap;
   pointer-events: none;
   z-index: 1;
 }

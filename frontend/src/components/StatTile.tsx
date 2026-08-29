@@ -118,9 +118,7 @@ export default function StatTile({
             {delta.periodLabel}
           </Badge>
         )}
-        {hasTrend && (
-          <TrendChart values={trend!} width={80} height={24} tooltipOffset={delta ? 32 : 0} />
-        )}
+        {hasTrend && <TrendChart values={trend!} width={80} height={24} />}
       </CardContent>
     </Card>
   );
