@@ -169,6 +169,46 @@ def test_api_dashboard_tolerates_activity_fetch_failure(logged_in_client, fake_g
     assert body["recentActivities"] == []
 
 
+def test_api_dashboard_includes_training_load(logged_in_client, fake_garmin_client):
+    fake_garmin_client.get_body_battery.return_value = None
+    fake_garmin_client.get_training_readiness.return_value = None
+    fake_garmin_client.get_sleep_data.return_value = None
+    fake_garmin_client.get_rhr_day.return_value = None
+    fake_garmin_client.get_hrv_data.return_value = None
+    fake_garmin_client.get_activities.return_value = []
+    fake_garmin_client.get_activities_by_date.return_value = [
+        {
+            "activityType": {"typeKey": "running"},
+            "startTimeLocal": "2026-08-23 09:58:40",
+            "distance": 8000,
+            "duration": 2400,
+        }
+    ]
+
+    response = logged_in_client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trainingLoad"] is not None
+    assert body["trainingLoad"]["thisWeek"]["workoutCount"] >= 0
+    fake_garmin_client.get_activities_by_date.assert_called_once()
+
+
+def test_api_dashboard_tolerates_training_load_fetch_failure(logged_in_client, fake_garmin_client):
+    fake_garmin_client.get_body_battery.return_value = None
+    fake_garmin_client.get_training_readiness.return_value = None
+    fake_garmin_client.get_sleep_data.return_value = None
+    fake_garmin_client.get_rhr_day.return_value = None
+    fake_garmin_client.get_hrv_data.return_value = None
+    fake_garmin_client.get_activities.return_value = []
+    fake_garmin_client.get_activities_by_date.side_effect = RuntimeError("boom")
+
+    response = logged_in_client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    assert response.json()["trainingLoad"] is None
+
+
 def test_api_weekly_check_in_resolves_the_logged_in_users_garmin_client(
     logged_in_client, fake_garmin_client
 ):

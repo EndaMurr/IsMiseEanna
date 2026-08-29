@@ -20,6 +20,7 @@ this process's env file and the MCP server's.
 
 import logging
 import os
+from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -45,6 +46,7 @@ from .garmin_client import (
     disconnect_user,
     get_client,
     summarize_activity,
+    summarize_training_load,
 )
 
 logger = logging.getLogger(__name__)
@@ -306,6 +308,15 @@ def api_dashboard() -> dict:
         logger.exception("Failed to fetch recent activities for dashboard")
         recent_activities = []
 
+    try:
+        today = date.today()
+        two_week_start = (today - timedelta(days=13)).isoformat()
+        two_week_activities = client.get_activities_by_date(two_week_start, today.isoformat())
+        training_load = summarize_training_load(two_week_activities, today=today)
+    except Exception:
+        logger.exception("Failed to fetch training load for dashboard")
+        training_load = None
+
     return {
         "today": {
             "bodyBattery": body_battery[-1],
@@ -322,6 +333,7 @@ def api_dashboard() -> dict:
             "hrv": hrv,
         },
         "recentActivities": recent_activities,
+        "trainingLoad": training_load,
     }
 
 
