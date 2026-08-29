@@ -37,12 +37,6 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
   --series-5: #e87ba4;
-  /* A soft shadow lifts a card off --page at this close a step without a
-   * heavier border; on the dark surface a shadow doesn't read against
-   * --page at all, so dark mode turns it off rather than fake it. */
-  --card-shadow:
-    0 1px 2px rgba(11, 11, 11, 0.04),
-    0 4px 10px rgba(11, 11, 11, 0.035);
   color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -97,7 +91,6 @@
     --series-3: #199e70;
     --series-4: #c98500;
     --series-5: #d55181;
-    --card-shadow: none;
     color-scheme: dark;
   }
 }
@@ -122,7 +115,6 @@
   --series-3: #199e70;
   --series-4: #c98500;
   --series-5: #d55181;
-  --card-shadow: none;
   color-scheme: dark;
 }
 
@@ -162,18 +154,6 @@ button {
   font: inherit;
 }
 
-.card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: var(--card-shadow);
-}
-
-.muted {
-  color: var(--text-secondary);
-}
-
 main {
   padding-bottom: 40px;
 }
@@ -182,17 +162,6 @@ h2,
 h3 {
   font-size: 15px;
   margin: 0 0 8px;
-}
-
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 16px;
-}
-
-li {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--gridline);
 }
 
 .tile-grid {
@@ -231,36 +200,6 @@ li {
   white-space: nowrap;
   pointer-events: none;
   z-index: 1;
-}
-
-.race-date-form {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.race-date-form label {
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.race-date-form input {
-  font: inherit;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-1);
-  color: var(--text-primary);
-}
-
-.race-date-form button {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-1);
-  color: var(--text-primary);
-  cursor: pointer;
 }
 
 @theme inline {

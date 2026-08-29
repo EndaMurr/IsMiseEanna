@@ -23,11 +23,11 @@ function weekDelta(thisWeek: number, lastWeek: number): StatDelta {
 export default function Dashboard() {
   const { data, error, loading } = useAsync(getDashboard, []);
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <p className="text-muted-foreground text-sm">Loading…</p>;
 
   if (error) {
     if (error instanceof ApiError && error.status === 409) return <ConnectPrompt />;
-    return <p className="muted">Couldn't load your dashboard. Try again shortly.</p>;
+    return <p className="text-muted-foreground text-sm">Couldn't load your dashboard. Try again shortly.</p>;
   }
 
   if (!data) return null;

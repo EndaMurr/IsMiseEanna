@@ -40,11 +40,11 @@ function SessionRow({ item, status }: { item: SessionItem; status: SessionStatus
 export default function WeeklyCheckIn() {
   const { data, error, loading } = useAsync(getWeeklyCheckIn, []);
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <p className="text-muted-foreground text-sm">Loading…</p>;
 
   if (error) {
     if (error instanceof ApiError && error.status === 409) return <ConnectPrompt />;
-    return <p className="muted">Couldn't load this week's check-in. Try again shortly.</p>;
+    return <p className="text-muted-foreground text-sm">Couldn't load this week's check-in. Try again shortly.</p>;
   }
 
   if (!data) return null;
