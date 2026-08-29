@@ -7,16 +7,26 @@ async function handleDisconnect() {
   window.location.reload();
 }
 
+const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
 export default function App() {
   return (
     <>
       <header className="app-header">
-        <h1>ismiseeanna</h1>
+        <div className="app-brand">
+          <span className="app-brand-mark" aria-hidden="true">
+            i
+          </span>
+          <div>
+            <h1>ismiseeanna</h1>
+            <p className="app-header-date">{today}</p>
+          </div>
+        </div>
         <div className="app-header-actions">
-          <button type="button" className="link-button muted" onClick={handleDisconnect}>
+          <button type="button" className="ghost-button" onClick={handleDisconnect}>
             Disconnect Garmin
           </button>
-          <a href="/logout" className="muted">
+          <a href="/logout" className="ghost-button">
             Log out
           </a>
         </div>

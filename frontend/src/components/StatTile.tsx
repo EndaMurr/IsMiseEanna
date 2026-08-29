@@ -1,3 +1,4 @@
+import type { ComponentType, SVGProps } from "react";
 import TrendChart from "./TrendChart";
 
 interface StatTileProps {
@@ -10,6 +11,12 @@ interface StatTileProps {
    * are wellness scores where higher is better; resting heart rate is the
    * one that isn't. Drives the delta's color. */
   goodDirection?: "up" | "down";
+  /** A fixed per-metric identity icon + color (a categorical palette slot,
+   * assigned in order across the tiles - never reused as a magnitude or
+   * status signal). Always paired with the label text beside it, so
+   * identity never rides on color/icon alone. */
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
+  accentVar?: string;
 }
 
 function formatValue(value: number | null): string {
@@ -30,7 +37,15 @@ function findComparison(trend: (number | null)[] | undefined): { value: number; 
   return null;
 }
 
-export default function StatTile({ label, value, trend, unit, goodDirection = "up" }: StatTileProps) {
+export default function StatTile({
+  label,
+  value,
+  trend,
+  unit,
+  goodDirection = "up",
+  icon: Icon,
+  accentVar,
+}: StatTileProps) {
   const hasTrend = trend?.some((v) => v !== null);
   const comparison = value !== null ? findComparison(trend) : null;
 
@@ -48,9 +63,18 @@ export default function StatTile({ label, value, trend, unit, goodDirection = "u
 
   return (
     <div className="card stat-tile">
-      <div className="stat-tile-label">{label}</div>
+      <div className="stat-tile-label">
+        {Icon && (
+          <span className="stat-tile-icon" style={accentVar ? { color: accentVar } : undefined}>
+            <Icon />
+          </span>
+        )}
+        {label}
+      </div>
       <div className="stat-tile-value-row">
-        <span className="stat-tile-value">{formatValue(value)}</span>
+        <span className={value === null ? "stat-tile-value stat-tile-value-empty" : "stat-tile-value"}>
+          {formatValue(value)}
+        </span>
         {value !== null && unit && <span className="stat-tile-unit">{unit}</span>}
       </div>
       {value === null && <div className="stat-tile-empty">Not synced yet</div>}

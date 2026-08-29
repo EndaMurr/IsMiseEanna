@@ -1,5 +1,6 @@
 import { ApiError, getDashboard } from "../api/client";
 import StatTile from "../components/StatTile";
+import { BatteryIcon, GaugeIcon, MoonIcon, HeartPulseIcon, WaveIcon } from "../components/icons";
 import { useAsync } from "../hooks/useAsync";
 import ConnectPrompt from "./ConnectPrompt";
 
@@ -21,18 +22,50 @@ export default function Dashboard() {
     trend: (number | null)[];
     unit?: string;
     goodDirection?: "up" | "down";
+    icon: typeof BatteryIcon;
+    // Fixed categorical slots (see theme.css), assigned in this same order
+    // across the tiles - identity, never a magnitude or status signal.
+    accentVar: string;
   }[] = [
-    { label: "Body battery", value: data.today.bodyBattery, trend: data.trends.bodyBattery, unit: "%" },
-    { label: "Training readiness", value: data.today.trainingReadiness, trend: data.trends.trainingReadiness },
-    { label: "Sleep score", value: data.today.sleepScore, trend: data.trends.sleepScore },
+    {
+      label: "Body battery",
+      value: data.today.bodyBattery,
+      trend: data.trends.bodyBattery,
+      unit: "%",
+      icon: BatteryIcon,
+      accentVar: "var(--series-1)",
+    },
+    {
+      label: "Training readiness",
+      value: data.today.trainingReadiness,
+      trend: data.trends.trainingReadiness,
+      icon: GaugeIcon,
+      accentVar: "var(--series-2)",
+    },
+    {
+      label: "Sleep score",
+      value: data.today.sleepScore,
+      trend: data.trends.sleepScore,
+      icon: MoonIcon,
+      accentVar: "var(--series-3)",
+    },
     {
       label: "Resting heart rate",
       value: data.today.restingHeartRate,
       trend: data.trends.restingHeartRate,
       unit: "bpm",
       goodDirection: "down",
+      icon: HeartPulseIcon,
+      accentVar: "var(--series-4)",
     },
-    { label: "HRV", value: data.today.hrv, trend: data.trends.hrv, unit: "ms" },
+    {
+      label: "HRV",
+      value: data.today.hrv,
+      trend: data.trends.hrv,
+      unit: "ms",
+      icon: WaveIcon,
+      accentVar: "var(--series-5)",
+    },
   ];
 
   return (
@@ -45,6 +78,8 @@ export default function Dashboard() {
           trend={tile.trend}
           unit={tile.unit}
           goodDirection={tile.goodDirection}
+          icon={tile.icon}
+          accentVar={tile.accentVar}
         />
       ))}
     </div>
