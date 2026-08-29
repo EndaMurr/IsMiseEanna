@@ -10,6 +10,13 @@ interface TrendChartProps {
   values: (number | null)[];
   width?: number;
   height?: number;
+  /** Extra clearance (px) added above the tooltip's normal 6px offset, for
+   * callers that render something else directly above this chart in the
+   * same card (e.g. StatTile's delta badge) - without it, the tooltip
+   * collides with and partially covers that sibling instead of floating
+   * clear of it. 0 by default, since most callers (TrendCard) have nothing
+   * directly above the chart. */
+  tooltipOffset?: number;
 }
 
 /** "Today", "Yesterday", "N days ago" - the trend is always a fixed trailing
@@ -28,7 +35,7 @@ function dayLabel(daysAgo: number): string {
  * rather than bridging over them. It's a real plotted line, not a bare stat
  * tile, so per the skill's interaction contract it carries a hover/focus
  * crosshair + tooltip rather than being decoration-only. */
-export default function TrendChart({ values, width = 80, height = 24 }: TrendChartProps) {
+export default function TrendChart({ values, width = 80, height = 24, tooltipOffset = 0 }: TrendChartProps) {
   const [hoverI, setHoverI] = useState<number | null>(null);
 
   const defined: Point[] = [];
@@ -159,7 +166,10 @@ export default function TrendChart({ values, width = 80, height = 24 }: TrendCha
         )}
       </svg>
       {hoverPoint && (
-        <div className="trend-tooltip" style={{ left: `${toXY(hoverPoint).x}px` }}>
+        <div
+          className="trend-tooltip"
+          style={{ left: `${toXY(hoverPoint).x}px`, marginBottom: `${6 + tooltipOffset}px` }}
+        >
           <strong>{Math.round(hoverPoint.v)}</strong> · {dayLabel(values.length - 1 - hoverPoint.i)}
         </div>
       )}
