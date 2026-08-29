@@ -381,3 +381,47 @@ def summarize_training_load(activities: list[dict], today: date | None = None) -
         "thisWeek": _week_totals(activities, today, days_ago_start=6, days_ago_end=0),
         "lastWeek": _week_totals(activities, today, days_ago_start=13, days_ago_end=7),
     }
+
+
+def summarize_race_predictions(predictions: dict) -> dict:
+    """Reduce get_race_predictions()'s raw shape (which also carries
+    userId/fromCalendarDate/etc. this dashboard has no business exposing)
+    to the four predicted times (seconds) a runner actually wants."""
+    return {
+        "time5K": predictions.get("time5K"),
+        "time10K": predictions.get("time10K"),
+        "timeHalfMarathon": predictions.get("timeHalfMarathon"),
+        "timeMarathon": predictions.get("timeMarathon"),
+    }
+
+
+def _humanize_status_phrase(phrase: str) -> str:
+    """"RECOVERY_2" -> "Recovery", "OVERREACHING" -> "Overreaching" - Garmin
+    appends a trailing _N intensity suffix to some phrases but not others,
+    so strip that off (if present) rather than hardcode a lookup for every
+    phrase Garmin might return."""
+    base = re.sub(r"_\d+$", "", phrase)
+    return base.replace("_", " ").title()
+
+
+def summarize_training_status(status: dict) -> dict:
+    """Reduce get_training_status()'s deeply-nested, per-device raw shape
+    (structure and field names are an undocumented, reverse-engineered
+    Garmin response - spot-check against a real account if this ever looks
+    wrong) to what a dashboard can show at a glance: the training-status
+    phrase for the primary device, and the latest VO2 max. Reads
+    defensively throughout - a missing/reshaped field yields None rather
+    than raising, since a partial reading here is still useful."""
+    vo2max = ((status.get("mostRecentVO2Max") or {}).get("generic") or {}).get("vo2MaxValue")
+
+    devices = (status.get("mostRecentTrainingStatus") or {}).get("latestTrainingStatusData") or {}
+    primary = next((d for d in devices.values() if d.get("primaryTrainingDevice")), None)
+    if primary is None and devices:
+        primary = next(iter(devices.values()))
+
+    phrase = (primary or {}).get("trainingStatusFeedbackPhrase")
+
+    return {
+        "label": _humanize_status_phrase(phrase) if phrase else None,
+        "vo2Max": vo2max,
+    }

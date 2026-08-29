@@ -68,11 +68,26 @@ export interface TrainingLoad {
   lastWeek: WeekTotals;
 }
 
+export interface RacePredictions {
+  /** All four in seconds. */
+  time5K: number | null;
+  time10K: number | null;
+  timeHalfMarathon: number | null;
+  timeMarathon: number | null;
+}
+
+export interface TrainingStatus {
+  label: string | null;
+  vo2Max: number | null;
+}
+
 export interface DashboardResponse {
   today: DashboardMetrics;
   trends: DashboardTrends;
   recentActivities: ActivitySummary[];
   trainingLoad: TrainingLoad | null;
+  racePredictions: RacePredictions | null;
+  trainingStatus: TrainingStatus | null;
 }
 
 export interface SessionItem {
