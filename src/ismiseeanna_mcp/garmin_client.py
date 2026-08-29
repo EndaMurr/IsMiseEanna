@@ -7,7 +7,7 @@ import shutil
 import stat
 import tempfile
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -331,4 +331,53 @@ def summarize_activity(activity: dict) -> dict:
         "durationSeconds": activity.get("duration"),
         "calories": activity.get("calories"),
         "averageHR": activity.get("averageHR"),
+    }
+
+
+def _activity_date(activity: dict) -> date | None:
+    raw = activity.get("startTimeLocal")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw).date()
+    except ValueError:
+        return None
+
+
+def _week_totals(activities: list[dict], today: date, days_ago_start: int, days_ago_end: int) -> dict:
+    """Aggregate the activities landing in [today - days_ago_start, today -
+    days_ago_end] (inclusive both ends) into a duration/distance/count
+    summary. A trailing window ending "today", not a calendar week - same
+    convention as _n_day_trend, so "this week" always means the last 7
+    days regardless of what day it is."""
+    window_start = today - timedelta(days=days_ago_start)
+    window_end = today - timedelta(days=days_ago_end)
+    duration_seconds = 0.0
+    running_distance_meters = 0.0
+    workout_count = 0
+    for activity in activities:
+        activity_date = _activity_date(activity)
+        if activity_date is None or not (window_start <= activity_date <= window_end):
+            continue
+        workout_count += 1
+        duration_seconds += activity.get("duration") or 0
+        type_key = (activity.get("activityType") or {}).get("typeKey") or ""
+        if "running" in type_key:
+            running_distance_meters += activity.get("distance") or 0
+    return {
+        "durationSeconds": duration_seconds,
+        "runningDistanceMeters": running_distance_meters,
+        "workoutCount": workout_count,
+    }
+
+
+def summarize_training_load(activities: list[dict], today: date | None = None) -> dict:
+    """This-week-vs-last-week training totals (duration, running distance,
+    workout count) from a raw get_activities_by_date() list spanning at
+    least the last 14 days. Caller is responsible for fetching a wide
+    enough window - this only buckets what it's given."""
+    today = today or date.today()
+    return {
+        "thisWeek": _week_totals(activities, today, days_ago_start=6, days_ago_end=0),
+        "lastWeek": _week_totals(activities, today, days_ago_start=13, days_ago_end=7),
     }

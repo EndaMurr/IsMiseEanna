@@ -1,6 +1,7 @@
 import json
 import os
 import stat
+from datetime import date, timedelta
 
 import pytest
 from cryptography.fernet import Fernet
@@ -10,6 +11,7 @@ from ismiseeanna_mcp.garmin_client import (
     GarminClientError,
     GarminNotConnectedError,
     _resolve_token_store,
+    summarize_training_load,
 )
 
 
@@ -270,3 +272,46 @@ def test_get_client_dispatches_to_per_user_client_when_authenticated(monkeypatch
     sentinel = object()
     garmin_client._clients_by_user["user-1"] = sentinel
     assert garmin_client.get_client() is sentinel
+
+
+def _activity(days_ago: int, today: date, type_key: str, distance: float, duration: float) -> dict:
+    activity_date = today - timedelta(days=days_ago)
+    return {
+        "activityType": {"typeKey": type_key},
+        "startTimeLocal": f"{activity_date.isoformat()} 07:00:00",
+        "distance": distance,
+        "duration": duration,
+    }
+
+
+def test_summarize_training_load_buckets_this_week_and_last_week():
+    today = date(2026, 8, 29)
+    activities = [
+        _activity(0, today, "running", distance=8000, duration=2400),  # this week
+        _activity(6, today, "strength_training", distance=0, duration=1800),  # this week (edge)
+        _activity(7, today, "running", distance=10000, duration=3000),  # last week (edge)
+        _activity(13, today, "running", distance=5000, duration=1500),  # last week (edge)
+        _activity(14, today, "running", distance=99999, duration=99999),  # outside both weeks
+    ]
+
+    result = summarize_training_load(activities, today=today)
+
+    assert result["thisWeek"] == {
+        "durationSeconds": 2400 + 1800,
+        "runningDistanceMeters": 8000,
+        "workoutCount": 2,
+    }
+    assert result["lastWeek"] == {
+        "durationSeconds": 3000 + 1500,
+        "runningDistanceMeters": 15000,
+        "workoutCount": 2,
+    }
+
+
+def test_summarize_training_load_ignores_activities_with_no_parseable_date():
+    today = date(2026, 8, 29)
+    activities = [{"activityType": {"typeKey": "running"}, "distance": 5000, "duration": 1500}]
+
+    result = summarize_training_load(activities, today=today)
+
+    assert result["thisWeek"] == {"durationSeconds": 0, "runningDistanceMeters": 0, "workoutCount": 0}

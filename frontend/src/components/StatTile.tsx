@@ -4,6 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { cn } from "@/lib/utils";
 import TrendChart from "./TrendChart";
 
+export interface StatDelta {
+  amount: number;
+  sentiment: "good" | "bad" | "neutral";
+  /** e.g. "yesterday", "last week" - whatever period this amount is relative to. */
+  periodLabel: string;
+}
+
 interface StatTileProps {
   label: string;
   value: number | null;
@@ -12,8 +19,13 @@ interface StatTileProps {
   unit?: string;
   /** Which direction of change is favorable for this metric - most of these
    * are wellness scores where higher is better; resting heart rate is the
-   * one that isn't. Drives the delta's color. */
+   * one that isn't. Drives the delta's color. Ignored when `delta` is
+   * given explicitly, since the caller has already decided the sentiment. */
   goodDirection?: "up" | "down";
+  /** Pre-computed delta, for tiles with no day-by-day trend to derive one
+   * from (e.g. this-week-vs-last-week totals). When omitted, the delta is
+   * derived from `trend` as usual (vs the most recent prior day). */
+  delta?: StatDelta | null;
   /** A fixed per-metric identity icon + color (a categorical palette slot,
    * assigned in order - never reused as a magnitude or status signal).
    * Always paired with the label text beside it, so identity never rides
@@ -46,22 +58,25 @@ export default function StatTile({
   trend,
   unit,
   goodDirection = "up",
+  delta: deltaOverride,
   icon: Icon,
   accentVar,
 }: StatTileProps) {
   const hasTrend = trend?.some((v) => v !== null);
-  const comparison = value !== null ? findComparison(trend) : null;
 
-  let delta: { amount: number; sentiment: "good" | "bad" | "neutral"; periodLabel: string } | null = null;
-  if (comparison !== null && value !== null) {
-    const amount = Math.round(value) - Math.round(comparison.value);
-    const sentiment: "good" | "bad" | "neutral" =
-      amount === 0 ? "neutral" : (amount > 0) === (goodDirection === "up") ? "good" : "bad";
-    delta = {
-      amount,
-      sentiment,
-      periodLabel: comparison.daysAgo === 1 ? "yesterday" : `${comparison.daysAgo} days ago`,
-    };
+  let delta: StatDelta | null = deltaOverride ?? null;
+  if (deltaOverride === undefined) {
+    const comparison = value !== null ? findComparison(trend) : null;
+    if (comparison !== null && value !== null) {
+      const amount = Math.round(value) - Math.round(comparison.value);
+      const sentiment: "good" | "bad" | "neutral" =
+        amount === 0 ? "neutral" : (amount > 0) === (goodDirection === "up") ? "good" : "bad";
+      delta = {
+        amount,
+        sentiment,
+        periodLabel: comparison.daysAgo === 1 ? "yesterday" : `${comparison.daysAgo} days ago`,
+      };
+    }
   }
 
   return (

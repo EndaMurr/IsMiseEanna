@@ -1,9 +1,24 @@
+import { Clock, ListChecks, Route } from "lucide-react";
 import { ApiError, getDashboard } from "../api/client";
 import RecentWorkouts from "../components/RecentWorkouts";
 import StatTile from "../components/StatTile";
+import type { StatDelta } from "../components/StatTile";
 import { BatteryIcon, GaugeIcon, MoonIcon, HeartPulseIcon, WaveIcon } from "../components/icons";
 import { useAsync } from "../hooks/useAsync";
 import ConnectPrompt from "./ConnectPrompt";
+
+/** This-week-vs-last-week is a magnitude comparison, not a wellness signal -
+ * there's no computed "more running is good" judgment to make (tapering
+ * before a race makes *less* the right amount), so this always renders
+ * neutral rather than borrowing the good/bad color language the wellness
+ * tiles use. */
+function weekDelta(thisWeek: number, lastWeek: number): StatDelta {
+  return {
+    amount: Math.round(thisWeek) - Math.round(lastWeek),
+    sentiment: "neutral",
+    periodLabel: "last week",
+  };
+}
 
 export default function Dashboard() {
   const { data, error, loading } = useAsync(getDashboard, []);
@@ -86,6 +101,42 @@ export default function Dashboard() {
         ))}
       </div>
       <RecentWorkouts activities={data.recentActivities} />
+      {data.trainingLoad && (
+        <>
+          <h2>Training load</h2>
+          <div className="tile-grid">
+            <StatTile
+              label="Weekly running distance"
+              value={data.trainingLoad.thisWeek.runningDistanceMeters / 1000}
+              unit="km"
+              delta={weekDelta(
+                data.trainingLoad.thisWeek.runningDistanceMeters / 1000,
+                data.trainingLoad.lastWeek.runningDistanceMeters / 1000,
+              )}
+              icon={Route}
+              accentVar="var(--series-1)"
+            />
+            <StatTile
+              label="Weekly training time"
+              value={data.trainingLoad.thisWeek.durationSeconds / 60}
+              unit="min"
+              delta={weekDelta(
+                data.trainingLoad.thisWeek.durationSeconds / 60,
+                data.trainingLoad.lastWeek.durationSeconds / 60,
+              )}
+              icon={Clock}
+              accentVar="var(--series-2)"
+            />
+            <StatTile
+              label="Workouts this week"
+              value={data.trainingLoad.thisWeek.workoutCount}
+              delta={weekDelta(data.trainingLoad.thisWeek.workoutCount, data.trainingLoad.lastWeek.workoutCount)}
+              icon={ListChecks}
+              accentVar="var(--series-3)"
+            />
+          </div>
+        </>
+      )}
     </>
   );
 }

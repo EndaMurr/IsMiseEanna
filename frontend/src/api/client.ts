@@ -57,10 +57,22 @@ export interface ActivitySummary {
   averageHR: number | null;
 }
 
+export interface WeekTotals {
+  durationSeconds: number;
+  runningDistanceMeters: number;
+  workoutCount: number;
+}
+
+export interface TrainingLoad {
+  thisWeek: WeekTotals;
+  lastWeek: WeekTotals;
+}
+
 export interface DashboardResponse {
   today: DashboardMetrics;
   trends: DashboardTrends;
   recentActivities: ActivitySummary[];
+  trainingLoad: TrainingLoad | null;
 }
 
 export interface SessionItem {
