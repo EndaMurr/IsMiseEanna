@@ -66,6 +66,10 @@ need the password.
   pace or heart-rate target) and/or repeat blocks (e.g. 5x400m). See the
   tool's docstring for the exact step schema. Pass `date` (`YYYY-MM-DD`) to
   also schedule it onto the Garmin Connect calendar in the same call.
+- `create_indoor_cycling_workout(name, steps, description, date)` — same
+  step schema and `date` behavior as `create_running_workout`, for an
+  indoor cycling session instead - no pace target (use a heart-rate target,
+  or none)
 - `schedule_workout(workout_id, date)` — put an existing saved workout onto
   the Garmin Connect calendar for a date (`YYYY-MM-DD`)
 - `unschedule_workout(scheduled_workout_id)` — remove a workout from the

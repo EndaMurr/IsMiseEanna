@@ -28,7 +28,11 @@ from .garmin_client import (
 from .plan_generator import generate_marathon_plan as _generate_marathon_plan
 from .plan_progress import build_plan_progress as _build_plan_progress
 from .realignment import _week_range, build_weekly_check_in
-from .workout_builder import WorkoutBuilderError, build_running_workout
+from .workout_builder import (
+    WorkoutBuilderError,
+    build_indoor_cycling_workout,
+    build_running_workout,
+)
 
 
 # Sent to any connecting MCP client as server-level guidance (part of the
@@ -572,6 +576,71 @@ def create_running_workout(
     steps = _fill_easy_pace_defaults(steps)
     try:
         workout_json = build_running_workout(name, steps, description)
+    except WorkoutBuilderError as e:
+        raise ValueError(str(e)) from e
+    created = _call_client(lambda: get_client().upload_workout(workout_json))
+    if date:
+        workout_id = created.get("workoutId")
+        if workout_id is None:
+            raise RuntimeError(
+                "Workout was created but Garmin didn't return a workoutId, so "
+                "it couldn't be scheduled. Use schedule_workout once you know "
+                "the workout's ID (e.g. from list_workouts)."
+            )
+        scheduled = _call_client(lambda: get_client().schedule_workout(workout_id, date))
+        created = {**created, "scheduled": scheduled}
+    return created
+
+
+@mcp.tool()
+def create_indoor_cycling_workout(
+    name: str,
+    steps: list[dict],
+    description: str | None = None,
+    date: str | None = None,
+) -> dict:
+    """Create and save a structured indoor cycling workout on Garmin Connect.
+
+    Same step schema as create_running_workout, except there's no pace
+    target for cycling - use "target_heart_rate_bpm": [low, high] instead,
+    or omit a target entirely. Each item in `steps` is one of:
+
+      - A plain step: {"kind": "warmup"|"cooldown"|"recovery"|"rest"|
+        "interval", "duration_seconds": <float>} (or "distance_meters"
+        instead of "duration_seconds"), optionally with
+        "target_heart_rate_bpm": [low, high]. Use "recovery" for a whole
+        standalone easy/recovery ride as well as for the easy portion
+        between hard efforts inside a repeat block - see
+        create_running_workout's docstring for why that's the same
+        underlying Garmin step type either way.
+      - A repeat block: {"kind": "repeat", "iterations": <int>,
+        "steps": [...]} wrapping a list of plain steps (e.g. an interval
+        plus its recovery) to repeat. Repeat blocks can't be nested.
+
+    Example - "10 min warmup, 4x5min hard with 3min easy recovery, 10 min
+    cooldown":
+        steps=[
+            {"kind": "warmup", "duration_seconds": 600},
+            {"kind": "repeat", "iterations": 4, "steps": [
+                {"kind": "interval", "duration_seconds": 300,
+                 "target_heart_rate_bpm": [155, 165]},
+                {"kind": "recovery", "duration_seconds": 180},
+            ]},
+            {"kind": "cooldown", "duration_seconds": 600},
+        ]
+
+    Pass `date` (YYYY-MM-DD) to also schedule the new workout onto the
+    Garmin Connect calendar for that date in the same call.
+
+    Before declining to create/schedule something because you believe it
+    already exists, re-check with a fresh call to
+    list_scheduled_workouts/list_workouts rather than relying on an
+    earlier turn's result - the user may have changed or deleted things
+    directly in Garmin Connect since then, outside this conversation.
+    """
+    steps = _normalize_standalone_recovery_steps(steps)
+    try:
+        workout_json = build_indoor_cycling_workout(name, steps, description)
     except WorkoutBuilderError as e:
         raise ValueError(str(e)) from e
     created = _call_client(lambda: get_client().upload_workout(workout_json))
