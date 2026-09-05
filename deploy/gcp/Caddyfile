@@ -17,8 +17,16 @@ app.REPLACE-WITH-YOUR-HOSTNAME {
 	encode gzip
 
 	@backend path /api/* /login /callback /logout /connect /connect/* /connect-garmin
-	reverse_proxy @backend 127.0.0.1:8001
 
-	try_files {path} /index.html
-	file_server
+	# Caddy sorts directives by a fixed priority list, not file order - and
+	# try_files outranks reverse_proxy in that list, so without this `route`
+	# block try_files would always run first, rewrite every request to
+	# /index.html (it always exists), and reverse_proxy's matcher would then
+	# never see the original @backend-matching path. `route` forces the
+	# top-to-bottom order actually written here.
+	route {
+		reverse_proxy @backend 127.0.0.1:8001
+		try_files {path} /index.html
+		file_server
+	}
 }
