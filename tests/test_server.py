@@ -562,6 +562,79 @@ def test_create_running_workout_raises_clearly_if_no_workout_id_to_schedule(fake
             [{"kind": "warmup", "duration_seconds": 600}],
             date="2026-08-10",
         )
+
+
+def test_create_indoor_cycling_workout_builds_and_uploads(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 43, "workoutName": "Easy Spin"}
+
+    result = server.create_indoor_cycling_workout(
+        "Easy Spin", [{"kind": "warmup", "duration_seconds": 600}]
+    )
+
+    assert fake_client.upload_workout.call_count == 1
+    (uploaded_json,), _kwargs = fake_client.upload_workout.call_args
+    assert uploaded_json["workoutName"] == "Easy Spin"
+    assert uploaded_json["sportType"]["sportTypeKey"] == "cardio_training"
+    assert result == {"workoutId": 43, "workoutName": "Easy Spin"}
+
+
+def test_create_indoor_cycling_workout_rejects_invalid_steps_without_calling_client(
+    fake_client,
+):
+    with pytest.raises(ValueError):
+        server.create_indoor_cycling_workout("Bad Workout", [{"kind": "warmup"}])
+    fake_client.upload_workout.assert_not_called()
+
+
+def test_create_indoor_cycling_workout_rejects_pace_target(fake_client):
+    with pytest.raises(ValueError, match="pace"):
+        server.create_indoor_cycling_workout(
+            "Bad",
+            [
+                {
+                    "kind": "interval",
+                    "duration_seconds": 300,
+                    "target_pace_min_per_km": [4.0, 4.2],
+                }
+            ],
+        )
+    fake_client.upload_workout.assert_not_called()
+
+
+def test_create_indoor_cycling_workout_schedules_when_date_given(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 43, "workoutName": "Easy Spin"}
+    fake_client.schedule_workout.return_value = {"scheduleId": 100, "date": "2026-08-10"}
+
+    result = server.create_indoor_cycling_workout(
+        "Easy Spin",
+        [{"kind": "warmup", "duration_seconds": 600}],
+        date="2026-08-10",
+    )
+
+    fake_client.schedule_workout.assert_called_once_with(43, "2026-08-10")
+    assert result["workoutId"] == 43
+    assert result["scheduled"] == {"scheduleId": 100, "date": "2026-08-10"}
+
+
+def test_create_indoor_cycling_workout_does_not_schedule_without_date(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 43, "workoutName": "Easy Spin"}
+
+    result = server.create_indoor_cycling_workout(
+        "Easy Spin", [{"kind": "warmup", "duration_seconds": 600}]
+    )
+
+    fake_client.schedule_workout.assert_not_called()
+    assert "scheduled" not in result
+
+
+def test_create_indoor_cycling_workout_renders_standalone_recovery_as_run_step(fake_client):
+    fake_client.upload_workout.return_value = {"workoutId": 43}
+
+    server.create_indoor_cycling_workout("Recovery Spin", [{"kind": "recovery", "duration_seconds": 1800}])
+
+    (uploaded_json,), _kwargs = fake_client.upload_workout.call_args
+    step = uploaded_json["workoutSegments"][0]["workoutSteps"][0]
+    assert step["stepType"]["stepTypeKey"] == "interval"
     fake_client.schedule_workout.assert_not_called()
 
 

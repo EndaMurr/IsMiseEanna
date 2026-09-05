@@ -2,6 +2,7 @@ import pytest
 
 from ismiseeanna_mcp.workout_builder import (
     WorkoutBuilderError,
+    build_indoor_cycling_workout,
     build_running_workout,
     pace_to_speed_mps,
 )
@@ -352,6 +353,87 @@ def test_steps_must_be_a_list():
 def test_each_step_must_be_a_dict():
     with pytest.raises(WorkoutBuilderError):
         build_running_workout("Run", ["not-a-dict"])
+
+
+def test_build_indoor_cycling_workout_uses_cardio_training_sport_type():
+    workout = build_indoor_cycling_workout(
+        "Easy Spin", [{"kind": "warmup", "duration_seconds": 600}]
+    )
+    assert workout["sportType"] == {
+        "sportTypeId": 6,
+        "sportTypeKey": "cardio_training",
+        "displayOrder": 6,
+    }
+    assert workout["workoutSegments"][0]["sportType"] == workout["sportType"]
+
+
+def test_indoor_cycling_steps_are_tagged_with_indoor_bike_exercise():
+    workout = build_indoor_cycling_workout(
+        "Easy Spin", [{"kind": "warmup", "duration_seconds": 600}]
+    )
+    step = workout["workoutSegments"][0]["workoutSteps"][0]
+    assert step["category"] == "BIKE"
+    assert step["exerciseName"] == "INDOOR_BIKE"
+
+
+def test_indoor_cycling_rest_steps_are_not_tagged_with_an_exercise():
+    # Confirmed against a real saved rowing workout: a "rest" step carries
+    # no category/exerciseName, unlike every other step kind.
+    workout = build_indoor_cycling_workout(
+        "Intervals",
+        [
+            {
+                "kind": "repeat",
+                "iterations": 3,
+                "steps": [
+                    {"kind": "interval", "duration_seconds": 60},
+                    {"kind": "rest", "duration_seconds": 30},
+                ],
+            }
+        ],
+    )
+    interval, rest = workout["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"]
+    assert "category" in interval
+    assert "category" not in rest
+    assert "exerciseName" not in rest
+
+
+def test_indoor_cycling_supports_heart_rate_target():
+    workout = build_indoor_cycling_workout(
+        "Zone 2",
+        [
+            {
+                "kind": "interval",
+                "duration_seconds": 1800,
+                "target_heart_rate_bpm": [130, 145],
+            }
+        ],
+    )
+    step = workout["workoutSegments"][0]["workoutSteps"][0]
+    assert step["targetType"]["workoutTargetTypeKey"] == "heart.rate.zone"
+    assert step["targetValueOne"] == 130
+    assert step["targetValueTwo"] == 145
+
+
+def test_indoor_cycling_rejects_pace_target():
+    with pytest.raises(WorkoutBuilderError, match="pace"):
+        build_indoor_cycling_workout(
+            "Bad",
+            [
+                {
+                    "kind": "interval",
+                    "duration_seconds": 300,
+                    "target_pace_min_per_km": [4.0, 4.2],
+                }
+            ],
+        )
+
+
+def test_indoor_cycling_workout_requires_name_and_steps():
+    with pytest.raises(WorkoutBuilderError):
+        build_indoor_cycling_workout("", [{"kind": "warmup", "duration_seconds": 600}])
+    with pytest.raises(WorkoutBuilderError):
+        build_indoor_cycling_workout("Ride", [])
 
 
 def test_deeply_nested_repeat_payload_raises_cleanly_not_recursion_error():

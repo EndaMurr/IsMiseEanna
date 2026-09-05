@@ -33,6 +33,27 @@ from typing import Any
 
 SPORT_TYPE_RUNNING = {"sportTypeId": 1, "sportTypeKey": "running", "displayOrder": 1}
 
+# Confirmed against a real saved workout (an indoor rowing one, read back via
+# get_workout): Garmin groups indoor equipment-based cardio - rowing,
+# indoor cycling, etc. - under this one sport type, not a separate
+# "cycling" sportTypeId as the bundled garminconnect.workout module's own
+# (unverified) SportType constants would suggest. Each step additionally
+# carries a category/exerciseName pair identifying the specific equipment
+# (see _INDOOR_BIKE below).
+SPORT_TYPE_CARDIO_TRAINING = {
+    "sportTypeId": 6,
+    "sportTypeKey": "cardio_training",
+    "displayOrder": 6,
+}
+
+# NOT independently confirmed the way SPORT_TYPE_CARDIO_TRAINING and the ROW
+# example were - inferred by direct analogy to the confirmed real example
+# ({"category": "ROW", "exerciseName": "INDOOR_ROW"} on a saved rowing
+# workout). Sanity-check a created indoor cycling workout in the Garmin
+# Connect app (or via get_workout) and correct this if it doesn't render
+# right - same as this module's pace-target lesson.
+_INDOOR_BIKE = {"category": "BIKE", "exerciseName": "INDOOR_BIKE"}
+
 _STEP_TYPES = {
     "warmup": {"stepTypeId": 1, "stepTypeKey": "warmup", "displayOrder": 1},
     "cooldown": {"stepTypeId": 2, "stepTypeKey": "cooldown", "displayOrder": 2},
@@ -172,9 +193,14 @@ def _end_condition(step: dict) -> tuple[dict, float]:
     return _DISTANCE_CONDITION, value
 
 
-def _target(step: dict) -> tuple[dict, float | None, float | None]:
+def _target(step: dict, allow_pace: bool = True) -> tuple[dict, float | None, float | None]:
     pace_range = step.get("target_pace_min_per_km")
     hr_range = step.get("target_heart_rate_bpm")
+    if pace_range and not allow_pace:
+        raise WorkoutBuilderError(
+            "target_pace_min_per_km isn't supported for this sport; use "
+            "target_heart_rate_bpm instead"
+        )
     if pace_range and hr_range:
         raise WorkoutBuilderError("A step can't target both pace and heart rate")
     if pace_range:
@@ -203,13 +229,19 @@ def _target(step: dict) -> tuple[dict, float | None, float | None]:
     return _NO_TARGET, None, None
 
 
-def _build_executable_step(step: dict, step_order: int) -> dict:
+def _build_executable_step(
+    step: dict,
+    step_order: int,
+    allow_pace: bool = True,
+    exercise: dict | None = None,
+) -> dict:
+    kind = step.get("kind", "")
     end_condition, end_value = _end_condition(step)
-    target_type, target_value_one, target_value_two = _target(step)
+    target_type, target_value_one, target_value_two = _target(step, allow_pace)
     result: dict[str, Any] = {
         "type": "ExecutableStepDTO",
         "stepOrder": step_order,
-        "stepType": _step_type(step.get("kind", "")),
+        "stepType": _step_type(kind),
         "endCondition": end_condition,
         "endConditionValue": end_value,
         "targetType": target_type,
@@ -219,6 +251,13 @@ def _build_executable_step(step: dict, step_order: int) -> dict:
         result["targetValueTwo"] = target_value_two
     if step.get("description"):
         result["description"] = step["description"]
+    # A "rest" step is equipment-agnostic (you're just resting, not actively
+    # using the equipment) - confirmed against the real rowing example,
+    # where the nested rest step carries no category/exerciseName while
+    # every other step kind does.
+    if exercise is not None and kind != "rest":
+        result["category"] = exercise["category"]
+        result["exerciseName"] = exercise["exerciseName"]
     return result
 
 
@@ -246,7 +285,11 @@ class _StepOrder:
 
 
 def _build_steps(
-    steps: list[dict], order: _StepOrder, in_repeat: bool = False
+    steps: list[dict],
+    order: _StepOrder,
+    in_repeat: bool = False,
+    allow_pace: bool = True,
+    exercise: dict | None = None,
 ) -> tuple[list[dict], float]:
     if not isinstance(steps, list):
         raise WorkoutBuilderError(f"'steps' must be a list (got {steps!r})")
@@ -263,7 +306,11 @@ def _build_steps(
                 )
             repeat_order = order.take()
             child_steps, child_seconds = _build_steps(
-                step.get("steps") or [], order, in_repeat=True
+                step.get("steps") or [],
+                order,
+                in_repeat=True,
+                allow_pace=allow_pace,
+                exercise=exercise,
             )
             if not child_steps:
                 raise WorkoutBuilderError("A repeat step needs a non-empty 'steps' list")
@@ -283,7 +330,9 @@ def _build_steps(
             )
             total_seconds += child_seconds * iterations
         else:
-            built.append(_build_executable_step(step, order.take()))
+            built.append(
+                _build_executable_step(step, order.take(), allow_pace, exercise)
+            )
             total_seconds += _estimate_step_seconds(step)
     return built, total_seconds
 
@@ -310,15 +359,24 @@ def build_running_workout(
         raise WorkoutBuilderError("At least one step is required")
 
     built_steps, total_seconds = _build_steps(steps, _StepOrder())
+    return _assemble_workout(name, SPORT_TYPE_RUNNING, built_steps, total_seconds, description)
 
+
+def _assemble_workout(
+    name: str,
+    sport_type: dict,
+    built_steps: list[dict],
+    total_seconds: float,
+    description: str | None,
+) -> dict:
     workout: dict[str, Any] = {
         "workoutName": name,
-        "sportType": SPORT_TYPE_RUNNING,
+        "sportType": sport_type,
         "estimatedDurationInSecs": round(total_seconds),
         "workoutSegments": [
             {
                 "segmentOrder": 1,
-                "sportType": SPORT_TYPE_RUNNING,
+                "sportType": sport_type,
                 "workoutSteps": built_steps,
             }
         ],
@@ -326,3 +384,40 @@ def build_running_workout(
     if description:
         workout["description"] = description
     return workout
+
+
+def build_indoor_cycling_workout(
+    name: str, steps: list[dict], description: str | None = None
+) -> dict:
+    """Build a Garmin Connect indoor-cycling-workout JSON payload from simple steps.
+
+    Same step schema as ``build_running_workout``, except pace targets
+    aren't supported (there's no equivalent unit for cycling) - use
+    ``target_heart_rate_bpm`` instead, or omit a target entirely.
+
+    ``steps`` is a list where each item is either:
+      - a plain step: ``{"kind": "warmup"|"cooldown"|"recovery"|"rest"|
+        "interval", "duration_seconds": <float>}`` (or ``"distance_meters"``
+        instead of ``"duration_seconds"``), optionally with
+        ``"target_heart_rate_bpm": [low, high]``.
+      - a repeat block: ``{"kind": "repeat", "iterations": <int>,
+        "steps": [...]}`` wrapping a list of plain steps to repeat.
+
+    Uses Garmin's "cardio_training" sport type with an indoor-bike
+    equipment tag on each non-rest step - see ``SPORT_TYPE_CARDIO_TRAINING``
+    and ``_INDOOR_BIKE``'s docstrings for how that was determined and its
+    verification status.
+
+    Raises ``WorkoutBuilderError`` on malformed input.
+    """
+    if not name or not name.strip():
+        raise WorkoutBuilderError("Workout name is required")
+    if not isinstance(steps, list) or not steps:
+        raise WorkoutBuilderError("At least one step is required")
+
+    built_steps, total_seconds = _build_steps(
+        steps, _StepOrder(), allow_pace=False, exercise=_INDOOR_BIKE
+    )
+    return _assemble_workout(
+        name, SPORT_TYPE_CARDIO_TRAINING, built_steps, total_seconds, description
+    )
